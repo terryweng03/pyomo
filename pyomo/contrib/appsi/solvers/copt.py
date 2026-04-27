@@ -892,12 +892,6 @@ class Copt(PersistentBase, PersistentSolver):
             ):
                 results.best_feasible_objective = None
 
-            if results.best_objective_bound is None:
-                if self._objective.sense == minimize:
-                    results.best_objective_bound = -math.inf
-                else:
-                    results.best_objective_bound = math.inf
-
         timer.start('load solution')
         if config.load_solution:
             if self._solver_model.haslpsol or self._solver_model.hasmipsol:

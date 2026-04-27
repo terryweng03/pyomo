@@ -1,23 +1,20 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import pyomo.environ as pyo
 import math
-from pyomo.core.base.block import _BlockData
+from pyomo.core.base.block import BlockData
 from pyomo.common.collections import ComponentSet
-from pyomo.core.base.var import _GeneralVarData
+from pyomo.core.base.var import Var
 from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr
 from pyomo.core.expr.calculus.diff_with_pyomo import reverse_sd
 import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +39,7 @@ def _print_var_set(var_set):
     return s
 
 
-def _check_var_bounds(m: _BlockData, too_large: float):
+def _check_var_bounds(m: BlockData, too_large: float):
     vars_without_bounds = ComponentSet()
     vars_with_large_bounds = ComponentSet()
     for v in m.component_data_objects(pyo.Var, descend_into=True):
@@ -73,7 +70,7 @@ def _check_coefficients(
 ):
     ders = reverse_sd(expr)
     for _v, _der in ders.items():
-        if isinstance(_v, _GeneralVarData):
+        if getattr(_v, 'ctype', None) is Var:
             if _v.is_fixed():
                 continue
             der_lb, der_ub = compute_bounds_on_expr(_der)
@@ -90,7 +87,7 @@ def _check_coefficients(
 
 
 def report_scaling(
-    m: _BlockData, too_large: float = 5e4, too_small: float = 1e-6
+    m: BlockData, too_large: float = 5e4, too_small: float = 1e-6
 ) -> bool:
     """
     This function logs potentially poorly scaled parts of the model.
@@ -107,7 +104,7 @@ def report_scaling(
 
     Parameters
     ----------
-    m: _BlockData
+    m: BlockData
         The pyomo model or block
     too_large: float
         Values above too_large will generate a log entry

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 """
 The pyomo.contrib.pynumero.sparse.block_matrix module includes methods that extend
 linear algebra operations in scipy for case of structured problems
@@ -21,6 +19,7 @@ where m_{i,j} are sparse matrices
 .. rubric:: Contents
 
 """
+
 from __future__ import annotations
 from pyomo.common.dependencies import mpi4py
 from .mpi_block_vector import MPIBlockVector
@@ -31,8 +30,6 @@ from .base_block import BaseBlockMatrix
 import numpy as np
 from scipy.sparse import coo_matrix
 import operator
-
-__all__ = ['MPIBlockMatrix']
 
 
 def assert_block_structure(mat: MPIBlockMatrix):
@@ -150,14 +147,14 @@ class MPIBlockMatrix(BaseBlockMatrix):
     @property
     def owned_blocks(self):
         """
-        Returns list with inidices of blocks owned by this processor.
+        Returns list with indices of blocks owned by this processor.
         """
         return list(zip(*np.nonzero(self._owned_mask)))
 
     @property
     def shared_blocks(self):
         """
-        Returns list of 2-tuples with inidices of blocks shared by all processors
+        Returns list of 2-tuples with indices of blocks shared by all processors
         """
         return list(zip(*np.nonzero(self._rank_owner < 0)))
 

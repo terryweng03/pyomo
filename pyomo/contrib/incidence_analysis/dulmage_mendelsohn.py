@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from collections import namedtuple
 from pyomo.common.dependencies import networkx as nx
@@ -69,6 +67,33 @@ def dulmage_mendelsohn(matrix_or_graph, top_nodes=None, matching=None):
       well-constrained rows
     - **overconstrained** - The columns matched with *possibly* unmatched
       rows (unmatched and overconstrained rows)
+
+    While the Dulmage-Mendelsohn decomposition does not specify an order within
+    any of these subsets, the order returned by this function preserves the
+    maximum matching that is used to compute the decomposition. That is, zipping
+    "corresponding" row and column subsets yields pairs in this maximum matching.
+    For example:
+
+    .. doctest::
+       :hide:
+       :skipif: not (networkx_available and scipy_available)
+
+       >>> # Hidden code block to make the following example runnable
+       >>> import scipy.sparse as sps
+       >>> from pyomo.contrib.incidence_analysis.dulmage_mendelsohn import dulmage_mendelsohn
+       >>> matrix = sps.identity(3)
+
+    .. doctest::
+       :skipif: not (networkx_available and scipy_available)
+
+       >>> row_dmpartition, col_dmpartition = dulmage_mendelsohn(matrix)
+       >>> rdmp = row_dmpartition
+       >>> cdmp = col_dmpartition
+       >>> matching = list(zip(
+       ...     rdmp.underconstrained + rdmp.square + rdmp.overconstrained,
+       ...     cdmp.underconstrained + cdmp.square + cdmp.overconstrained,
+       ... ))
+       >>> # matching is a valid maximum matching of rows and columns of the matrix!
 
     Parameters
     ----------
@@ -133,7 +158,7 @@ def dulmage_mendelsohn(matrix_or_graph, top_nodes=None, matching=None):
 
         partition = (
             row_partition,
-            tuple([n - M for n in subset] for subset in col_partition)
+            tuple([n - M for n in subset] for subset in col_partition),
             # Column nodes have values in [M, M+N-1]. Apply the offset
             # to get values corresponding to indices in user's matrix.
         )

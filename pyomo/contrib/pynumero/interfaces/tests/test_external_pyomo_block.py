@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import itertools
 import pyomo.common.unittest as unittest
@@ -15,10 +13,10 @@ from pyomo.common.collections import ComponentSet, ComponentMap
 from pyomo.core.expr.visitor import identify_variables
 import pyomo.environ as pyo
 
+from pyomo.common.dependencies import networkx_available as nx_available
 from pyomo.contrib.pynumero.dependencies import (
     numpy as np,
     numpy_available,
-    scipy,
     scipy_available,
 )
 
@@ -68,12 +66,8 @@ def _make_external_model():
     m.y_out = pyo.Var()
     m.c_out_1 = pyo.Constraint(expr=m.x_out - m.x == 0)
     m.c_out_2 = pyo.Constraint(expr=m.y_out - m.y == 0)
-    m.c_ex_1 = pyo.Constraint(
-        expr=m.x**3 - 2 * m.y == m.a**2 + m.b**3 - m.r**3 - 2
-    )
-    m.c_ex_2 = pyo.Constraint(
-        expr=m.x + m.y**3 == m.a**3 + 2 * m.b**2 + m.r**2 + 1
-    )
+    m.c_ex_1 = pyo.Constraint(expr=m.x**3 - 2 * m.y == m.a**2 + m.b**3 - m.r**3 - 2)
+    m.c_ex_2 = pyo.Constraint(expr=m.x + m.y**3 == m.a**3 + 2 * m.b**2 + m.r**2 + 1)
     return m
 
 
@@ -155,6 +149,7 @@ def make_dynamic_model():
 
 
 class TestExternalGreyBoxBlock(unittest.TestCase):
+    @unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
     def test_construct_scalar(self):
         m = pyo.ConcreteModel()
         m.ex_block = ExternalGreyBoxBlock(concrete=True)
@@ -175,6 +170,7 @@ class TestExternalGreyBoxBlock(unittest.TestCase):
         self.assertEqual(len(block.outputs), 0)
         self.assertEqual(len(block._equality_constraint_names), 2)
 
+    @unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
     def test_construct_indexed(self):
         block = ExternalGreyBoxBlock([0, 1, 2], concrete=True)
         self.assertIs(type(block), IndexedExternalGreyBoxBlock)
@@ -196,6 +192,7 @@ class TestExternalGreyBoxBlock(unittest.TestCase):
             self.assertEqual(len(b._equality_constraint_names), 2)
 
     @unittest.skipUnless(cyipopt_available, "cyipopt is not available")
+    @unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
     def test_solve_square(self):
         m = pyo.ConcreteModel()
         m.ex_block = ExternalGreyBoxBlock(concrete=True)
@@ -238,6 +235,7 @@ class TestExternalGreyBoxBlock(unittest.TestCase):
         self.assertAlmostEqual(m_ex.y.value, y.value, delta=1e-8)
 
     @unittest.skipUnless(cyipopt_available, "cyipopt is not available")
+    @unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
     def test_optimize(self):
         m = pyo.ConcreteModel()
         m.ex_block = ExternalGreyBoxBlock(concrete=True)
@@ -296,6 +294,7 @@ class TestExternalGreyBoxBlock(unittest.TestCase):
         self.assertAlmostEqual(m_ex.y.value, y.value, delta=1e-8)
 
     @unittest.skipUnless(cyipopt_available, "cyipopt is not available")
+    @unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
     def test_optimize_with_cyipopt_for_inner_problem(self):
         # Use CyIpopt, rather than the default SciPy solvers,
         # for the inner problem
@@ -431,6 +430,7 @@ class TestExternalGreyBoxBlock(unittest.TestCase):
         self.assertAlmostEqual(m_ex.x.value, x.value, delta=1e-8)
         self.assertAlmostEqual(m_ex.y.value, y.value, delta=1e-8)
 
+    @unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
     def test_construct_dynamic(self):
         m = make_dynamic_model()
         time = m.time
@@ -508,6 +508,7 @@ class TestExternalGreyBoxBlock(unittest.TestCase):
         )
 
     @unittest.skipUnless(cyipopt_available, "cyipopt is not available")
+    @unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
     def test_solve_square_dynamic(self):
         # Create the "external model"
         m = make_dynamic_model()
@@ -575,6 +576,7 @@ class TestExternalGreyBoxBlock(unittest.TestCase):
             self.assertStructuredAlmostEqual(values, target_values, delta=1e-5)
 
     @unittest.skipUnless(cyipopt_available, "cyipopt is not available")
+    @unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
     def test_optimize_dynamic(self):
         # Create the "external model"
         m = make_dynamic_model()
@@ -657,6 +659,7 @@ class TestExternalGreyBoxBlock(unittest.TestCase):
             self.assertStructuredAlmostEqual(values, target_values, delta=1e-5)
 
     @unittest.skipUnless(cyipopt_available, "cyipopt is not available")
+    @unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
     def test_optimize_dynamic_references(self):
         """
         When when pre-existing variables are attached to the EGBB
@@ -721,7 +724,8 @@ class TestExternalGreyBoxBlock(unittest.TestCase):
             self.assertStructuredAlmostEqual(values, target_values, delta=1e-5)
 
 
-class TestPyomoNLPWithGreyBoxBLocks(unittest.TestCase):
+@unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
+class TestPyomoNLPWithGreyBoxBlocks(unittest.TestCase):
     def test_set_and_evaluate(self):
         m = pyo.ConcreteModel()
         m.ex_block = ExternalGreyBoxBlock(concrete=True)

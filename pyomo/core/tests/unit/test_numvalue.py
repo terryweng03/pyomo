@@ -1,19 +1,22 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
 # Unit Tests for Python numeric values
 #
 
+import subprocess
+import sys
 from math import nan, inf
+
 import pyomo.common.unittest as unittest
+from pyomo.common.dependencies import numpy, numpy_available
+from pyomo.core.base.units_container import pint_available
 
 from pyomo.environ import (
     value,
@@ -38,22 +41,24 @@ from pyomo.core.expr.numvalue import (
 )
 from pyomo.common.numeric_types import _native_boolean_types
 
-try:
-    import numpy
 
-    numpy_available = True
-except:
-    numpy_available = False
-
-
-class MyBogusType(object):
+class MyBogusType:
     def __init__(self, val=0):
         self.val = float(val)
 
 
 class MyBogusNumericType(MyBogusType):
     def __add__(self, other):
-        return MyBogusNumericType(self.val + float(other))
+        if other.__class__ in native_numeric_types:
+            return MyBogusNumericType(self.val + float(other))
+        else:
+            return NotImplemented
+
+    def __le__(self, other):
+        if other.__class__ in native_numeric_types:
+            return self.val <= float(other)
+        else:
+            return NotImplemented
 
     def __lt__(self, other):
         return self.val < float(other)
@@ -77,7 +82,7 @@ class Test_is_numeric_data(unittest.TestCase):
         self.assertEqual(is_numeric_data(NumericConstant(1.0)), True)
 
     def test_error(self):
-        class A(object):
+        class A:
             pass
 
         val = A()
@@ -163,7 +168,7 @@ class Test_value(unittest.TestCase):
         self.assertEqual(None, value(m.x, exception=False))
 
     def test_error1(self):
-        class A(object):
+        class A:
             pass
 
         val = A()
@@ -255,7 +260,7 @@ class Test_polydegree(unittest.TestCase):
         self.assertTrue(1, polynomial_degree(m.x))
 
     def test_error1(self):
-        class A(object):
+        class A:
             pass
 
         val = A()
@@ -304,7 +309,7 @@ class Test_is_constant(unittest.TestCase):
         self.assertTrue(is_constant(val))
 
     def test_error(self):
-        class A(object):
+        class A:
             pass
 
         val = A()
@@ -347,7 +352,7 @@ class Test_is_fixed(unittest.TestCase):
         self.assertTrue(is_fixed(val))
 
     def test_error(self):
-        class A(object):
+        class A:
             pass
 
         val = A()
@@ -390,7 +395,7 @@ class Test_is_variable_type(unittest.TestCase):
         self.assertFalse(is_variable_type(val))
 
     def test_error(self):
-        class A(object):
+        class A:
             pass
 
         val = A()
@@ -426,7 +431,7 @@ class Test_is_potentially_variable(unittest.TestCase):
         self.assertFalse(is_potentially_variable(val))
 
     def test_error(self):
-        class A(object):
+        class A:
             pass
 
         val = A()
@@ -492,7 +497,7 @@ class Test_as_numeric(unittest.TestCase):
         self.assertEqual(1.0, as_numeric(val))
 
     def test_error1(self):
-        class A(object):
+        class A:
             pass
 
         val = A()
@@ -537,33 +542,108 @@ class Test_as_numeric(unittest.TestCase):
         try:
             val = as_numeric(ref)
             self.assertEqual(val().val, 42.0)
+            self.assertIn(MyBogusNumericType, native_numeric_types)
+            self.assertIn(MyBogusNumericType, native_types)
         finally:
             native_numeric_types.remove(MyBogusNumericType)
             native_types.remove(MyBogusNumericType)
 
+    @unittest.skipUnless(numpy_available, "This test requires NumPy")
     def test_numpy_basic_float_registration(self):
-        if not numpy_available:
-            self.skipTest("This test requires NumPy")
-        self.assertIn(numpy.float_, native_numeric_types)
-        self.assertNotIn(numpy.float_, native_integer_types)
-        self.assertIn(numpy.float_, _native_boolean_types)
-        self.assertIn(numpy.float_, native_types)
+        self.assertIn(numpy.float64, native_numeric_types)
+        self.assertNotIn(numpy.float64, native_integer_types)
+        self.assertIn(numpy.float64, _native_boolean_types)
+        self.assertIn(numpy.float64, native_types)
 
+    @unittest.skipUnless(numpy_available, "This test requires NumPy")
     def test_numpy_basic_int_registration(self):
-        if not numpy_available:
-            self.skipTest("This test requires NumPy")
         self.assertIn(numpy.int_, native_numeric_types)
         self.assertIn(numpy.int_, native_integer_types)
         self.assertIn(numpy.int_, _native_boolean_types)
         self.assertIn(numpy.int_, native_types)
 
+    @unittest.skipUnless(numpy_available, "This test requires NumPy")
     def test_numpy_basic_bool_registration(self):
-        if not numpy_available:
-            self.skipTest("This test requires NumPy")
         self.assertNotIn(numpy.bool_, native_numeric_types)
         self.assertNotIn(numpy.bool_, native_integer_types)
         self.assertIn(numpy.bool_, _native_boolean_types)
         self.assertIn(numpy.bool_, native_types)
+
+    @unittest.skipUnless(numpy_available, "This test requires NumPy")
+    def test_automatic_numpy_registration(self):
+        cmd = (
+            'from pyomo.common.numeric_types import native_numeric_types as nnt; '
+            'print("float64" in [_.__name__ for _ in nnt]); '
+            'import numpy; '
+            'print("float64" in [_.__name__ for _ in nnt])'
+        )
+
+        rc = subprocess.run(
+            [sys.executable, '-c', cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        self.assertEqual((rc.returncode, rc.stdout), (0, "False\nTrue\n"))
+
+        cmd = (
+            'import numpy; '
+            'from pyomo.common.numeric_types import native_numeric_types as nnt; '
+            'print("float64" in [_.__name__ for _ in nnt])'
+        )
+
+        rc = subprocess.run(
+            [sys.executable, '-c', cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        self.assertEqual((rc.returncode, rc.stdout), (0, "True\n"))
+
+    def test_unknownNumericType_expr_registration(self):
+        cmd = (
+            'import pyomo; '
+            'from pyomo.core.base import Var, Param; '
+            'from pyomo.core.base.units_container import units; '
+            'from pyomo.common.numeric_types import native_numeric_types as nnt; '
+            f'from {__name__} import MyBogusNumericType; '
+            'ref = MyBogusNumericType(42); '
+            'print(MyBogusNumericType in nnt); %s; print(MyBogusNumericType in nnt); '
+        )
+
+        def _tester(expr):
+            rc = subprocess.run(
+                [sys.executable, '-c', cmd % expr],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            self.assertEqual(
+                (rc.returncode, rc.stdout),
+                (
+                    0,
+                    '''False
+WARNING: Dynamically registering the following numeric type:
+        pyomo.core.tests.unit.test_numvalue.MyBogusNumericType
+    Dynamic registration is supported for convenience, but there are known
+    limitations to this approach.  We recommend explicitly registering numeric
+    types using RegisterNumericType() or RegisterIntegerType().
+True
+''',
+                ),
+            )
+
+        _tester('Var() <= ref')
+        _tester('ref <= Var()')
+        _tester('ref + Var()')
+        _tester('Var() + ref')
+        _tester('v = Var(); v.construct(); v.value = ref')
+        _tester('p = Param(mutable=True); p.construct(); p.value = ref')
+        if pint_available:
+            _tester('v = Var(units=units.m); v.construct(); v.value = ref')
+            _tester(
+                'p = Param(mutable=True, units=units.m); p.construct(); p.value = ref'
+            )
 
 
 if __name__ == "__main__":

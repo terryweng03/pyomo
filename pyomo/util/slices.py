@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.common.collections import ComponentSet
 from pyomo.core.base.indexed_component import normalize_index
@@ -92,18 +90,16 @@ def slice_component_along_sets(comp, sets, context=None):
 
     Parameters:
     -----------
-    comp: `pyomo.core.base.component.Component` or
-    `pyomo.core.base.component.ComponentData`
+    comp: :class:`Component` or :class:`ComponentData`
         Component whose parent structure to search and replace
-    sets: `pyomo.common.collections.ComponentSet`
+    sets: `~pyomo.common.collections.ComponentSet`
         Contains the sets to replace with slices
-    context: `pyomo.core.base.block.Block` or
-    `pyomo.core.base.block._BlockData`
+    context: :class:`Block` or :class:`BlockData`
         Block below which to search for sets
 
     Returns:
     --------
-    `pyomo.core.base.indexed_component_slice.IndexedComponent_slice`:
+    `~pyomo.core.base.indexed_component_slice.IndexedComponent_slice`:
         Slice of `comp` with wildcards replacing the indices of `sets`
 
     """

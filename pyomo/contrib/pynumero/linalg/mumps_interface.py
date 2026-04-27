@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 from scipy.sparse import isspmatrix_coo, coo_matrix, tril, spmatrix
 import numpy as np
 from .base import DirectLinearSolverInterface, LinearSolverResults, LinearSolverStatus
@@ -175,7 +173,10 @@ class MumpsCentralizedAssembledLinearSolver(DirectLinearSolverInterface):
             res.status = LinearSolverStatus.successful
         elif stat in {-6, -10}:
             res.status = LinearSolverStatus.singular
-        elif stat in {-8, -9}:
+        elif stat in {-8, -9, -19}:
+            # -8: Integer workspace too small for factorization
+            # -9: Real workspace too small for factorization
+            # -19: Maximum size of working memory is too small
             res.status = LinearSolverStatus.not_enough_memory
         elif stat < 0:
             res.status = LinearSolverStatus.error

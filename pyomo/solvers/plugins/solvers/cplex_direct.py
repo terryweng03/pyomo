@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import logging
 import re
@@ -31,7 +29,6 @@ from pyomo.opt.results.solver import TerminationCondition, SolverStatus
 from pyomo.opt.base import SolverFactory
 import time
 
-
 logger = logging.getLogger('pyomo.solvers')
 
 
@@ -39,7 +36,7 @@ class DegreeError(ValueError):
     pass
 
 
-class _CplexExpr(object):
+class _CplexExpr:
     def __init__(
         self,
         variables,
@@ -65,7 +62,7 @@ def _is_numeric(x):
     return True
 
 
-class _VariableData(object):
+class _VariableData:
     def __init__(self, solver_model):
         self._solver_model = solver_model
         self.lb = []
@@ -85,7 +82,7 @@ class _VariableData(object):
         )
 
 
-class _LinearConstraintData(object):
+class _LinearConstraintData:
     def __init__(self, solver_model):
         self._solver_model = solver_model
         self.lin_expr = []
@@ -596,8 +593,13 @@ class CPLEXDirect(DirectSolver):
         cplex_expr, referenced_vars = self._get_expr_from_pyomo_expr(
             obj.expr, self._max_obj_degree
         )
-        for i in range(len(cplex_expr.q_coefficients)):
-            cplex_expr.q_coefficients[i] *= 2
+        # CPLEX actually uses x'Qx/2 in the objective, as the
+        # off-diagonal entries appear in both the lower triangle and the
+        # upper triangle (i.e., c*x1*x2 and c*x2*x1).  However, since
+        # the diagonal entries only appear once, we need to double them.
+        for i, v1 in enumerate(cplex_expr.q_variables1):
+            if v1 == cplex_expr.q_variables2[i]:
+                cplex_expr.q_coefficients[i] *= 2
 
         for var in referenced_vars:
             self._referenced_variables[var] += 1
@@ -841,7 +843,9 @@ class CPLEXDirect(DirectSolver):
 
                 if extract_slacks:
                     linear_slacks = self._solver_model.solution.get_linear_slacks()
-                    qudratic_slacks = self._solver_model.solution.get_quadratic_slacks()
+                    quadratic_slacks = (
+                        self._solver_model.solution.get_quadratic_slacks()
+                    )
                     for i, con_name in enumerate(
                         self._solver_model.linear_constraints.get_names()
                     ):
@@ -864,7 +868,7 @@ class CPLEXDirect(DirectSolver):
                     for i, con_name in enumerate(
                         self._solver_model.quadratic_constraints.get_names()
                     ):
-                        soln_constraints[con_name]["Slack"] = qudratic_slacks[i]
+                        soln_constraints[con_name]["Slack"] = quadratic_slacks[i]
         elif self._load_solutions:
             if cpxprob.solution.get_solution_type() > 0:
                 self.load_vars()

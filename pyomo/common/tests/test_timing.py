@@ -1,19 +1,18 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import pyomo.common.unittest as unittest
 from pyomo.common.tee import capture_output
 
 import gc
 from io import StringIO
+from itertools import zip_longest
 import logging
 import sys
 import time
@@ -26,8 +25,15 @@ from pyomo.common.timing import (
     TicTocTimer,
     HierarchicalTimer,
 )
-from pyomo.environ import ConcreteModel, RangeSet, Var, Any, TransformationFactory
-from pyomo.core.base.var import _VarData
+from pyomo.environ import (
+    AbstractModel,
+    ConcreteModel,
+    RangeSet,
+    Var,
+    Any,
+    TransformationFactory,
+)
+from pyomo.core.base.var import VarData
 
 
 class _pseudo_component(Var):
@@ -39,8 +45,13 @@ class TestTiming(unittest.TestCase):
     def setUp(self):
         self.reenable_gc = gc.isenabled()
         gc.disable()
+        # Set a long switch interval to discourage context switches
+        # during these tests
+        self.switchinterval = sys.getswitchinterval()
+        sys.setswitchinterval(10)
 
     def tearDown(self):
+        sys.setswitchinterval(self.switchinterval)
         if self.reenable_gc:
             gc.enable()
             gc.collect()
@@ -54,7 +65,7 @@ class TestTiming(unittest.TestCase):
         )
         v = Var()
         v.construct()
-        a = ConstructionTimer(_VarData(v))
+        a = ConstructionTimer(VarData(v))
         self.assertRegex(
             str(a),
             r"ConstructionTimer object for Var ScalarVar\[NOTSET\]; "
@@ -99,7 +110,6 @@ class TestTiming(unittest.TestCase):
                 m.y = Var(Any, dense=False)
                 xfrm.apply_to(m)
             result = out.getvalue().strip()
-            self.maxDiff = None
             for l, r in zip(result.splitlines(), ref.splitlines()):
                 self.assertRegex(str(l.strip()), str(r.strip()))
         finally:
@@ -114,7 +124,6 @@ class TestTiming(unittest.TestCase):
             m.y = Var(Any, dense=False)
             xfrm.apply_to(m)
             result = os.getvalue().strip()
-            self.maxDiff = None
             for l, r in zip(result.splitlines(), ref.splitlines()):
                 self.assertRegex(str(l.strip()), str(r.strip()))
         finally:
@@ -127,14 +136,54 @@ class TestTiming(unittest.TestCase):
             m.y = Var(Any, dense=False)
             xfrm.apply_to(m)
             result = os.getvalue().strip()
-            self.maxDiff = None
             for l, r in zip(result.splitlines(), ref.splitlines()):
                 self.assertRegex(str(l.strip()), str(r.strip()))
             self.assertEqual(buf.getvalue().strip(), "")
 
+    def test_report_timing_context_manager(self):
+        ref = r"""
+           (0(\.\d+)?) seconds to construct Var x; 2 indices total
+           (0(\.\d+)?) seconds to construct Var y; 0 indices total
+           (0(\.\d+)?) seconds to construct Suffix Suffix
+           (0(\.\d+)?) seconds to apply Transformation RelaxIntegerVars \(in-place\)
+           """.strip()
+
+        xfrm = TransformationFactory('core.relax_integer_vars')
+
+        model = AbstractModel()
+        model.r = RangeSet(2)
+        model.x = Var(model.r)
+        model.y = Var(Any, dense=False)
+
+        OS = StringIO()
+
+        with report_timing(False):
+            with report_timing(OS):
+                with report_timing(False):
+                    # Active reporting is False: nothing should be emitted
+                    with capture_output() as OUT:
+                        m = model.create_instance()
+                        xfrm.apply_to(m)
+                    self.assertEqual(OUT.getvalue(), "")
+                    self.assertEqual(OS.getvalue(), "")
+                # Active reporting: we should log the timing
+                with capture_output() as OUT:
+                    m = model.create_instance()
+                    xfrm.apply_to(m)
+                self.assertEqual(OUT.getvalue(), "")
+                result = OS.getvalue().strip()
+                for l, r in zip_longest(result.splitlines(), ref.splitlines()):
+                    self.assertRegex(str(l.strip()), str(r.strip()))
+            # Active reporting is False: the previous log should not have changed
+            with capture_output() as OUT:
+                m = model.create_instance()
+                xfrm.apply_to(m)
+            self.assertEqual(OUT.getvalue(), "")
+            self.assertEqual(result, OS.getvalue().strip())
+
     def test_TicTocTimer_tictoc(self):
         SLEEP = 0.1
-        RES = 0.02  # resolution (seconds): 1/5 the sleep
+        RES = 0.01  # resolution (seconds): 1/10 the sleep
 
         # Note: pypy on GHA occasionally has timing
         # differences of >0.04s
@@ -143,6 +192,11 @@ class TestTiming(unittest.TestCase):
         # Note: previously, OSX on GHA also had significantly nosier tests
         # if sys.platform == 'darwin':
         #     RES *= 2
+
+        # Note: the above RES heuristics were determined before the
+        # current handling of "now" within the tic/toc timer.  They are
+        # probably overly conservative now, but tightening them doesn't
+        # really improve the quality of the tests.
 
         abs_time = time.perf_counter()
         timer = TicTocTimer()
@@ -223,7 +277,12 @@ class TestTiming(unittest.TestCase):
 
     def test_TicTocTimer_context_manager(self):
         SLEEP = 0.1
-        RES = 0.05  # resolution (seconds): 1/2 the sleep
+        RES = 0.01  # resolution (seconds): 1/10 the sleep
+
+        # Note: the above RES heuristic was determined before the
+        # current handling of "now" within the tic/toc timer.  It is
+        # probably overly conservative now, but tightening them doesn't
+        # really improve the quality of the tests.
 
         abs_time = time.perf_counter()
         with TicTocTimer() as timer:

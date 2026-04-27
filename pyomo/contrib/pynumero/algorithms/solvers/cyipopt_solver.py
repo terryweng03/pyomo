@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineerinkg
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 """
 The cyipopt_solver module includes two solvers that call CyIpopt. One,
 CyIpoptSolver, is a solver that operates on a CyIpoptProblemInterface
@@ -15,6 +13,7 @@ CyIpoptSolver, is a solver that operates on a CyIpoptProblemInterface
 Pyomo model.
 
 """
+
 import io
 import sys
 import logging
@@ -23,7 +22,9 @@ import abc
 
 from pyomo.common.deprecation import relocated_module_attribute
 from pyomo.common.dependencies import attempt_import, numpy as np, numpy_available
-from pyomo.common.tee import redirect_fd, TeeStream
+from pyomo.common.tee import capture_output
+from pyomo.common.modeling import unique_component_name
+from pyomo.core.base.objective import Objective
 
 # Because pynumero.interfaces requires numpy, we will leverage deferred
 # imports here so that the solver can be registered even when numpy is
@@ -63,7 +64,7 @@ relocated_module_attribute(
 from pyomo.common.config import ConfigBlock, ConfigValue
 from pyomo.common.timing import TicTocTimer
 from pyomo.core.base import Block, Objective, minimize
-from pyomo.opt import SolverStatus, SolverResults, TerminationCondition, ProblemSense
+from pyomo.opt import SolverStatus, SolverResults, TerminationCondition
 from pyomo.opt.results.solution import Solution
 
 logger = logging.getLogger(__name__)
@@ -178,7 +179,7 @@ _ipopt_term_cond = {
 }
 
 
-class CyIpoptSolver(object):
+class CyIpoptSolver:
     def __init__(self, problem_interface, options=None):
         """Create an instance of the CyIpoptSolver. You must
         provide a problem_interface that corresponds to
@@ -226,23 +227,8 @@ class CyIpoptSolver(object):
         for k, v in self._options.items():
             add_option(k, v)
 
-        # We preemptively set up the TeeStream, even if we aren't
-        # going to use it: the implementation is such that the
-        # context manager does nothing (i.e., doesn't start up any
-        # processing threads) until after a client accesses
-        # STDOUT/STDERR
-        with TeeStream(sys.stdout) as _teeStream:
-            if tee:
-                try:
-                    fd = sys.stdout.fileno()
-                except (io.UnsupportedOperation, AttributeError):
-                    # If sys,stdout doesn't have a valid fileno,
-                    # then create one using the TeeStream
-                    fd = _teeStream.STDOUT.fileno()
-            else:
-                fd = None
-            with redirect_fd(fd=1, output=fd, synchronize=False):
-                x, info = cyipopt_solver.solve(xstart)
+        with capture_output(sys.stdout if tee else None, capture_fd=True):
+            x, info = cyipopt_solver.solve(xstart)
 
         return x, info
 
@@ -256,7 +242,7 @@ def _numpy_vector(val):
     return ans
 
 
-class PyomoCyIpoptSolver(object):
+class PyomoCyIpoptSolver:
     CONFIG = ConfigBlock("cyipopt")
     CONFIG.declare(
         "tee",
@@ -289,6 +275,13 @@ class PyomoCyIpoptSolver(object):
             description="Set the function that will be called each iteration.",
         ),
     )
+    CONFIG.declare(
+        "halt_on_evaluation_error",
+        ConfigValue(
+            default=None,
+            description="Whether to halt if a function or derivative evaluation fails",
+        ),
+    )
 
     def __init__(self, **kwds):
         """Create an instance of the CyIpoptSolver. You must
@@ -310,7 +303,13 @@ class PyomoCyIpoptSolver(object):
         return True
 
     def version(self):
-        return tuple(int(_) for _ in cyipopt.__version__.split("."))
+        def _int(x):
+            try:
+                return int(x)
+            except:
+                return x
+
+        return tuple(_int(_) for _ in cyipopt_interface.cyipopt.__version__.split("."))
 
     def solve(self, model, **kwds):
         config = self.config(kwds, preserve_implicit=True)
@@ -325,15 +324,33 @@ class PyomoCyIpoptSolver(object):
         grey_box_blocks = list(
             model.component_data_objects(egb.ExternalGreyBoxBlock, active=True)
         )
-        if grey_box_blocks:
-            # nlp = pyomo_nlp.PyomoGreyBoxNLP(model)
-            nlp = pyomo_grey_box.PyomoNLPWithGreyBoxBlocks(model)
-        else:
-            nlp = pyomo_nlp.PyomoNLP(model)
+        # if there is no objective, add one temporarily so we can construct an NLP
+        objectives = list(model.component_data_objects(Objective, active=True))
+        n_obj = len(objectives)
+        for gbb in grey_box_blocks:
+            if gbb.get_external_model().has_objective():
+                n_obj += 1
+        if n_obj == 0:
+            objname = unique_component_name(model, "_obj")
+            objective = model.add_component(objname, Objective(expr=0.0))
+        try:
+            if grey_box_blocks:
+                # nlp = pyomo_nlp.PyomoGreyBoxNLP(model)
+                nlp = pyomo_grey_box.PyomoNLPWithGreyBoxBlocks(model)
+            else:
+                nlp = pyomo_nlp.PyomoNLP(model)
+        finally:
+            # We only need the objective to construct the NLP, so we delete
+            # it from the model ASAP
+            if n_obj == 0:
+                model.del_component(objective)
 
         problem = cyipopt_interface.CyIpoptNLP(
-            nlp, intermediate_callback=config.intermediate_callback
+            nlp,
+            intermediate_callback=config.intermediate_callback,
+            halt_on_evaluation_error=config.halt_on_evaluation_error,
         )
+
         ng = len(problem.g_lb())
         nx = len(problem.x_lb())
         cyipopt_solver = problem
@@ -355,6 +372,21 @@ class PyomoCyIpoptSolver(object):
                 set_scaling = cyipopt_solver.setProblemScaling
             set_scaling(obj_scaling, x_scaling, g_scaling)
 
+        # has_hessian_support only exists for PyomoNLPWithGreyBoxBlocks, but if
+        # we have grey box blocks, we know our NLP is of this class.
+        if grey_box_blocks and not nlp.has_hessian_support():
+            # Note that `config` is a copy of the instance-level self.config so
+            # we don't have to reset the option after the solve.
+            hessian_approx = config.options.get("hessian_approximation", None)
+            if hessian_approx is not None and hessian_approx.value() == "exact":
+                logger.warning(
+                    "'hessian_approximation' option is set to 'exact', but at"
+                    " least one grey box model does not support Hessians."
+                    " Overriding this option with"
+                    " hessian_approximation='limited-memory'."
+                )
+            config.options["hessian_approximation"] = "limited-memory"
+
         # add options
         try:
             add_option = cyipopt_solver.add_option
@@ -366,23 +398,8 @@ class PyomoCyIpoptSolver(object):
 
         timer = TicTocTimer()
         try:
-            # We preemptively set up the TeeStream, even if we aren't
-            # going to use it: the implementation is such that the
-            # context manager does nothing (i.e., doesn't start up any
-            # processing threads) until after a client accesses
-            # STDOUT/STDERR
-            with TeeStream(sys.stdout) as _teeStream:
-                if config.tee:
-                    try:
-                        fd = sys.stdout.fileno()
-                    except (io.UnsupportedOperation, AttributeError):
-                        # If sys,stdout doesn't have a valid fileno,
-                        # then create one using the TeeStream
-                        fd = _teeStream.STDOUT.fileno()
-                else:
-                    fd = None
-                with redirect_fd(fd=1, output=fd, synchronize=False):
-                    x, info = cyipopt_solver.solve(problem.x_init())
+            with capture_output(sys.stdout if config.tee else None, capture_fd=True):
+                x, info = cyipopt_solver.solve(problem.x_init())
             solverStatus = SolverStatus.ok
         except:
             msg = "Exception encountered during cyipopt solve:"
@@ -419,11 +436,10 @@ class PyomoCyIpoptSolver(object):
 
         results.problem.name = model.name
         obj = next(model.component_data_objects(Objective, active=True))
+        results.problem.sense = obj.sense
         if obj.sense == minimize:
-            results.problem.sense = ProblemSense.minimize
             results.problem.upper_bound = info["obj_val"]
         else:
-            results.problem.sense = ProblemSense.maximize
             results.problem.lower_bound = info["obj_val"]
         results.problem.number_of_objectives = 1
         results.problem.number_of_constraints = ng

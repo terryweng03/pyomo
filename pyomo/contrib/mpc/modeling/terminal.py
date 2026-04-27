@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 #################################################################################
 # The Institute for the Design of Advanced Energy Systems Integrated Platform
@@ -87,10 +85,10 @@ def get_penalty_at_time(
         List of time-indexed variables that will be penalized
     t: Float
         Time point at which to apply the penalty
-    target_data: ScalarData
+    target_data: ~scalar_data.ScalarData
         ScalarData object containing the target for (at least) the variables
         to be penalized
-    weight_data: ScalarData (optional)
+    weight_data: ~scalar_data.ScalarData (optional)
         ScalarData object containing the penalty weights for (at least) the
         variables to be penalized
     time_set: Set (optional)
@@ -135,10 +133,10 @@ def get_terminal_penalty(
     time_set: Set
         Time set that indexes the provided variables. Penalties are applied
         at the last point in this set.
-    target_data: ScalarData
+    target_data: ~scalar_data.ScalarData
         ScalarData object containing the target for (at least) the variables
         to be penalized
-    weight_data: ScalarData (optional)
+    weight_data: ~scalar_data.ScalarData (optional)
         ScalarData object containing the penalty weights for (at least) the
         variables to be penalized
     variable_set: Set (optional)

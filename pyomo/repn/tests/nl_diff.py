@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import itertools
 import re
@@ -15,9 +13,7 @@ import re
 from difflib import SequenceMatcher, unified_diff
 
 from pyomo.repn.tests.diffutils import compare_floats, load_baseline
-import pyomo.repn.plugins.nl_writer as nl_writer
-
-template = nl_writer.text_nl_debug_template
+from pyomo.repn.ampl import TextNLDebugTemplate as template
 
 _norm_whitespace = re.compile(r'[^\S\n]+')
 _norm_integers = re.compile(r'(?m)\.0+$')

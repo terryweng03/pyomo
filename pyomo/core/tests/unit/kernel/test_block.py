@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import tempfile
 import os
@@ -1341,7 +1339,7 @@ class TestMisc(unittest.TestCase):
             objs.rotate(-1)
 
 
-class _Test_block_base(object):
+class _Test_block_base:
     _children = None
     _child_key = None
     _components_no_descend = None
@@ -1646,13 +1644,15 @@ class _Test_block_base(object):
                         ctype=IBlock, active=True, descend_into=False
                     )
                 ),
-                sorted(
-                    str(_b)
-                    for _b in self._components_no_descend[obj][IBlock]
-                    if _b.active
-                )
-                if getattr(obj, 'active', True)
-                else [],
+                (
+                    sorted(
+                        str(_b)
+                        for _b in self._components_no_descend[obj][IBlock]
+                        if _b.active
+                    )
+                    if getattr(obj, 'active', True)
+                    else []
+                ),
             )
             self.assertEqual(
                 set(
@@ -1661,13 +1661,15 @@ class _Test_block_base(object):
                         ctype=IBlock, active=True, descend_into=False
                     )
                 ),
-                set(
-                    id(_b)
-                    for _b in self._components_no_descend[obj][IBlock]
-                    if _b.active
-                )
-                if getattr(obj, 'active', True)
-                else set(),
+                (
+                    set(
+                        id(_b)
+                        for _b in self._components_no_descend[obj][IBlock]
+                        if _b.active
+                    )
+                    if getattr(obj, 'active', True)
+                    else set()
+                ),
             )
             # test ctype=IVariable
             self.assertEqual(
@@ -1677,9 +1679,13 @@ class _Test_block_base(object):
                         ctype=IVariable, active=True, descend_into=False
                     )
                 ),
-                sorted(str(_v) for _v in self._components_no_descend[obj][IVariable])
-                if getattr(obj, 'active', True)
-                else [],
+                (
+                    sorted(
+                        str(_v) for _v in self._components_no_descend[obj][IVariable]
+                    )
+                    if getattr(obj, 'active', True)
+                    else []
+                ),
             )
             self.assertEqual(
                 set(
@@ -1688,34 +1694,40 @@ class _Test_block_base(object):
                         ctype=IVariable, active=True, descend_into=False
                     )
                 ),
-                set(id(_v) for _v in self._components_no_descend[obj][IVariable])
-                if getattr(obj, 'active', True)
-                else set(),
+                (
+                    set(id(_v) for _v in self._components_no_descend[obj][IVariable])
+                    if getattr(obj, 'active', True)
+                    else set()
+                ),
             )
             # test no ctype
             self.assertEqual(
                 sorted(
                     str(_c) for _c in obj.components(active=True, descend_into=False)
                 ),
-                sorted(
-                    str(_c)
-                    for ctype in self._components_no_descend[obj]
-                    for _c in self._components_no_descend[obj][ctype]
-                    if getattr(_c, "active", True)
-                )
-                if getattr(obj, 'active', True)
-                else [],
+                (
+                    sorted(
+                        str(_c)
+                        for ctype in self._components_no_descend[obj]
+                        for _c in self._components_no_descend[obj][ctype]
+                        if getattr(_c, "active", True)
+                    )
+                    if getattr(obj, 'active', True)
+                    else []
+                ),
             )
             self.assertEqual(
                 set(id(_c) for _c in obj.components(active=True, descend_into=False)),
-                set(
-                    id(_c)
-                    for ctype in self._components_no_descend[obj]
-                    for _c in self._components_no_descend[obj][ctype]
-                    if getattr(_c, "active", True)
-                )
-                if getattr(obj, 'active', True)
-                else set(),
+                (
+                    set(
+                        id(_c)
+                        for ctype in self._components_no_descend[obj]
+                        for _c in self._components_no_descend[obj][ctype]
+                        if getattr(_c, "active", True)
+                    )
+                    if getattr(obj, 'active', True)
+                    else set()
+                ),
             )
 
     def test_components_active_None(self):
@@ -1794,9 +1806,11 @@ class _Test_block_base(object):
                         ctype=IBlock, active=True, descend_into=True
                     )
                 ),
-                sorted(str(_b) for _b in self._components[obj][IBlock] if _b.active)
-                if getattr(obj, 'active', True)
-                else [],
+                (
+                    sorted(str(_b) for _b in self._components[obj][IBlock] if _b.active)
+                    if getattr(obj, 'active', True)
+                    else []
+                ),
             )
             self.assertEqual(
                 set(
@@ -1805,9 +1819,11 @@ class _Test_block_base(object):
                         ctype=IBlock, active=True, descend_into=True
                     )
                 ),
-                set(id(_b) for _b in self._components[obj][IBlock] if _b.active)
-                if getattr(obj, 'active', True)
-                else set(),
+                (
+                    set(id(_b) for _b in self._components[obj][IBlock] if _b.active)
+                    if getattr(obj, 'active', True)
+                    else set()
+                ),
             )
             # test ctype=IVariable
             self.assertEqual(
@@ -1817,13 +1833,15 @@ class _Test_block_base(object):
                         ctype=IVariable, active=True, descend_into=True
                     )
                 ),
-                sorted(
-                    str(_v)
-                    for _v in self._components[obj][IVariable]
-                    if _active_path_to_object_exists(obj, _v)
-                )
-                if getattr(obj, 'active', True)
-                else [],
+                (
+                    sorted(
+                        str(_v)
+                        for _v in self._components[obj][IVariable]
+                        if _active_path_to_object_exists(obj, _v)
+                    )
+                    if getattr(obj, 'active', True)
+                    else []
+                ),
             )
             self.assertEqual(
                 set(
@@ -1832,38 +1850,44 @@ class _Test_block_base(object):
                         ctype=IVariable, active=True, descend_into=True
                     )
                 ),
-                set(
-                    id(_v)
-                    for _v in self._components[obj][IVariable]
-                    if _active_path_to_object_exists(obj, _v)
-                )
-                if getattr(obj, 'active', True)
-                else set(),
+                (
+                    set(
+                        id(_v)
+                        for _v in self._components[obj][IVariable]
+                        if _active_path_to_object_exists(obj, _v)
+                    )
+                    if getattr(obj, 'active', True)
+                    else set()
+                ),
             )
             # test no ctype
             self.assertEqual(
                 sorted(
                     str(_c) for _c in obj.components(active=True, descend_into=True)
                 ),
-                sorted(
-                    str(_c)
-                    for ctype in self._components[obj]
-                    for _c in self._components[obj][ctype]
-                    if _active_path_to_object_exists(obj, _c)
-                )
-                if getattr(obj, 'active', True)
-                else [],
+                (
+                    sorted(
+                        str(_c)
+                        for ctype in self._components[obj]
+                        for _c in self._components[obj][ctype]
+                        if _active_path_to_object_exists(obj, _c)
+                    )
+                    if getattr(obj, 'active', True)
+                    else []
+                ),
             )
             self.assertEqual(
                 set(id(_c) for _c in obj.components(active=True, descend_into=True)),
-                set(
-                    id(_c)
-                    for ctype in self._components[obj]
-                    for _c in self._components[obj][ctype]
-                    if _active_path_to_object_exists(obj, _c)
-                )
-                if getattr(obj, 'active', True)
-                else set(),
+                (
+                    set(
+                        id(_c)
+                        for ctype in self._components[obj]
+                        for _c in self._components[obj][ctype]
+                        if _active_path_to_object_exists(obj, _c)
+                    )
+                    if getattr(obj, 'active', True)
+                    else set()
+                ),
             )
 
 

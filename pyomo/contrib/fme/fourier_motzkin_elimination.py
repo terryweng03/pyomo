@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.core import (
     Var,
@@ -23,13 +21,14 @@ from pyomo.core import (
     value,
     ConstraintList,
 )
-from pyomo.core.base import TransformationFactory, _VarData
+from pyomo.core.base import TransformationFactory, VarData
 from pyomo.core.plugins.transform.hierarchy import Transformation
 from pyomo.common.config import ConfigBlock, ConfigValue, NonNegativeFloat
 from pyomo.common.modeling import unique_component_name
 from pyomo.repn.standard_repn import generate_standard_repn
 from pyomo.common.collections import ComponentMap, ComponentSet
 from pyomo.opt import TerminationCondition
+from pyomo.util.config_domains import ComponentDataSet
 
 import logging
 
@@ -55,23 +54,6 @@ def _check_var_bounds_filter(constraint):
     if value(min_lhs) >= constraint['lower']:
         return False  # constraint implied by var bounds
     return True
-
-
-def vars_to_eliminate_list(x):
-    if isinstance(x, (Var, _VarData)):
-        if not x.is_indexed():
-            return ComponentSet([x])
-        ans = ComponentSet()
-        for j in x.index_set():
-            ans.add(x[j])
-        return ans
-    elif hasattr(x, '__iter__'):
-        ans = ComponentSet()
-        for i in x:
-            ans.update(vars_to_eliminate_list(i))
-        return ans
-    else:
-        raise ValueError("Expected Var or list of Vars.\n\tReceived %s" % type(x))
 
 
 def gcd(a, b):
@@ -111,7 +93,7 @@ class Fourier_Motzkin_Elimination_Transformation(Transformation):
         'vars_to_eliminate',
         ConfigValue(
             default=None,
-            domain=vars_to_eliminate_list,
+            domain=ComponentDataSet(Var),
             description="Continuous variable or list of continuous variables to "
             "project out of the model",
             doc="""
@@ -746,12 +728,9 @@ class Fourier_Motzkin_Elimination_Transformation(Transformation):
                 continue
             # deactivate the constraint
             projected_constraints[i].deactivate()
-            m.del_component(obj)
-            # make objective to maximize its infeasibility
-            obj = Objective(
-                expr=projected_constraints[i].body - projected_constraints[i].lower
-            )
-            m.add_component(obj_name, obj)
+            # Our constraint looks like: 0 <= a^Tx - b, so make objective to
+            # maximize its infeasibility
+            obj.expr = projected_constraints[i].body - projected_constraints[i].lower
             results = solver_factory.solve(m)
             if results.solver.termination_condition == TerminationCondition.unbounded:
                 obj_val = -float('inf')
@@ -769,7 +748,6 @@ class Fourier_Motzkin_Elimination_Transformation(Transformation):
                 obj_val = value(obj)
             # if we couldn't make it infeasible, it's useless
             if obj_val >= tolerance:
-                m.del_component(projected_constraints[i])
                 del projected_constraints[i]
             else:
                 projected_constraints[i].activate()

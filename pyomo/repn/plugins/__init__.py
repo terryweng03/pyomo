@@ -1,24 +1,25 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 
 def load():
-    import pyomo.repn.plugins.cpxlp
-    import pyomo.repn.plugins.ampl
-    import pyomo.repn.plugins.baron_writer
-    import pyomo.repn.plugins.mps
-    import pyomo.repn.plugins.gams_writer
-    import pyomo.repn.plugins.lp_writer
-    import pyomo.repn.plugins.nl_writer
-
+    from pyomo.repn.plugins import (
+        cpxlp,
+        ampl,
+        baron_writer,
+        mps,
+        gams_writer,
+        lp_writer,
+        nl_writer,
+        standard_form,
+        parameterized_standard_form,
+    )
     from pyomo.opt import WriterFactory
 
     # Register the "default" versions of writers that have more than one
@@ -36,6 +37,23 @@ def load():
 
 def activate_writer_version(name, ver):
     """DEBUGGING TOOL to switch the "default" writer implementation"""
+    from pyomo.opt import WriterFactory
+
     doc = WriterFactory.doc(name)
     WriterFactory.unregister(name)
     WriterFactory.register(name, doc)(WriterFactory.get_class(f'{name}_v{ver}'))
+
+
+def active_writer_version(name):
+    """DEBUGGING TOOL to switch the "default" writer implementation"""
+    from pyomo.opt import WriterFactory
+
+    ref = WriterFactory.get_class(name)
+    ver = 1
+    try:
+        while 1:
+            if WriterFactory.get_class(f'{name}_v{ver}') is ref:
+                return ver
+            ver += 1
+    except KeyError:
+        return None

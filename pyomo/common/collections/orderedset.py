@@ -1,50 +1,36 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from collections.abc import MutableSet
-from collections import OrderedDict
+
+from pyomo.common.autoslots import AutoSlots
 
 
-class OrderedSet(MutableSet):
-    __slots__ = ('_dict',)
+class OrderedSet(AutoSlots.Mixin, MutableSet):
+    __slots__ = ("_dict",)
 
     def __init__(self, iterable=None):
-        # TODO: Starting in Python 3.7, dict is ordered (and is faster
-        # than OrderedDict).  dict began supporting reversed() in 3.8.
-        # We should consider changing the underlying data type here from
-        # OrderedDict to dict.
-        self._dict = OrderedDict()
+        # Starting in Python 3.7, dict is ordered (and is faster than
+        # OrderedDict).  dict began supporting reversed() in 3.8.
+        self._dict = {}
         if iterable is not None:
-            if iterable.__class__ is OrderedSet:
-                self._dict.update(iterable._dict)
-            else:
-                self.update(iterable)
+            self.update(iterable)
 
     def __str__(self):
         """String representation of the mapping."""
-        return "OrderedSet(%s)" % (', '.join(repr(x) for x in self))
+        return "OrderedSet(%s)" % (", ".join(repr(x) for x in self))
 
     def update(self, iterable):
-        for val in iterable:
-            self.add(val)
-
-    #
-    # This method must be defined for deepcopy/pickling
-    # because this class is slotized.
-    #
-    def __setstate__(self, state):
-        self._dict = state
-
-    def __getstate__(self):
-        return self._dict
+        if isinstance(iterable, OrderedSet):
+            self._dict.update(iterable._dict)
+        else:
+            self._dict.update((val, None) for val in iterable)
 
     #
     # Implement MutableSet abstract methods

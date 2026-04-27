@@ -1,29 +1,12 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
-__all__ = (
-    'value',
-    'is_constant',
-    'is_fixed',
-    'is_variable_type',
-    'is_potentially_variable',
-    'NumericValue',
-    'ZeroConstant',
-    'native_numeric_types',
-    'native_types',
-    'nonpyomo_leaf_types',
-    'polynomial_degree',
-)
-
-import collections
 import sys
 import logging
 
@@ -32,9 +15,9 @@ from pyomo.common.deprecation import (
     deprecation_warning,
     relocated_module_attribute,
 )
-from pyomo.core.expr.expr_common import ExpressionType
+from pyomo.common.modeling import NOTSET
+from pyomo.core.expr.expr_common import ExpressionType, _type_check_exception_arg
 from pyomo.core.expr.numeric_expr import NumericValue
-import pyomo.common.numeric_types as _numeric_types
 
 # TODO: update Pyomo to import these objects from common.numeric_types
 #   (and not from here)
@@ -44,7 +27,7 @@ from pyomo.common.numeric_types import (
     native_numeric_types,
     native_integer_types,
     native_logical_types,
-    pyomo_constant_types,
+    _pyomo_constant_types,
     check_if_numeric_type,
     value,
 )
@@ -59,6 +42,16 @@ relocated_module_attribute(
     "contains types that were convertible to bool, and not types that should "
     "be treated as if they were bool (as was the case for the other "
     "native_*_types sets).  Users likely should use native_logical_types.",
+)
+relocated_module_attribute(
+    'pyomo_constant_types',
+    'pyomo.common.numeric_types._pyomo_constant_types',
+    version='6.7.2',
+    f_globals=globals(),
+    msg="The pyomo_constant_types set will be removed in the future: the set "
+    "contained only NumericConstant and _PythonCallbackFunctionID, and provided "
+    "no meaningful value to clients or walkers.  Users should likely handle "
+    "these types in the same manner as immutable Params.",
 )
 relocated_module_attribute(
     'RegisterNumericType',
@@ -101,7 +94,7 @@ logger = logging.getLogger('pyomo.core')
 ##------------------------------------------------------------------------
 
 
-class NonNumericValue(object):
+class NonNumericValue(PyomoObject):
     """An object that contains a non-numeric value
 
     Constructor Arguments:
@@ -115,6 +108,19 @@ class NonNumericValue(object):
 
     def __str__(self):
         return str(self.value)
+
+    def __repr__(self):
+        return repr(self.value)
+
+    def __call__(self, exception=NOTSET):
+        exception = _type_check_exception_arg(self, exception)
+        return self.value
+
+    def is_constant(self):
+        return True
+
+    def is_fixed(self):
+        return True
 
 
 nonpyomo_leaf_types.add(NonNumericValue)
@@ -259,11 +265,6 @@ def polynomial_degree(obj):
         )
 
 
-#
-# It is very common to have only a few constants in a model, but those
-# constants get repeated many times.  KnownConstants lets us re-use /
-# share constants we have seen before.
-#
 # Note:
 #   For now, all constants are coerced to floats.  This avoids integer
 #   division in Python 2.x.  (At least some of the time.)
@@ -272,6 +273,10 @@ def polynomial_degree(obj):
 #   coercion.  The main difference in the following code is that we will
 #   need to index KnownConstants by both the class type and value, since
 #   INT, FLOAT and LONG values sometimes hash the same.
+#
+# It is very common to have only a few constants in a model, but those
+# constants get repeated many times.  KnownConstants lets us re-use /
+# share constants we have seen before.
 #
 _KnownConstants = {}
 
@@ -417,8 +422,9 @@ class NumericConstant(NumericValue):
     def __str__(self):
         return str(self.value)
 
-    def __call__(self, exception=True):
+    def __call__(self, exception=NOTSET):
         """Return the constant value"""
+        exception = _type_check_exception_arg(self, exception)
         return self.value
 
     def pprint(self, ostream=None, verbose=False):
@@ -427,7 +433,7 @@ class NumericConstant(NumericValue):
         ostream.write(str(self))
 
 
-pyomo_constant_types.add(NumericConstant)
+_pyomo_constant_types.add(NumericConstant)
 
 # We use as_numeric() so that the constant is also in the cache
 ZeroConstant = as_numeric(0)

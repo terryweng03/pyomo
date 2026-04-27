@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import itertools
 import logging
@@ -15,15 +13,18 @@ import sys
 import builtins
 from contextlib import nullcontext
 
+from pyomo.common.collections import MutableMapping
 from pyomo.common.errors import TemplateExpressionError
+from pyomo.common.gc_manager import PauseGC
 from pyomo.core.expr.base import ExpressionBase, ExpressionArgs_Mixin, NPV_Mixin
 from pyomo.core.expr.logical_expr import BooleanExpression
 from pyomo.core.expr.numeric_expr import (
-    NumericExpression,
-    SumExpression,
-    Numeric_NPV_Mixin,
-    register_arg_type,
     ARG_TYPE,
+    NumericExpression,
+    Numeric_NPV_Mixin,
+    SumExpression,
+    mutable_expression,
+    register_arg_type,
     _balanced_parens,
 )
 from pyomo.core.expr.numvalue import (
@@ -38,12 +39,14 @@ from pyomo.core.expr.relational_expr import tuple_to_relational_expr
 from pyomo.core.expr.visitor import (
     ExpressionReplacementVisitor,
     StreamBasedExpressionVisitor,
+    expression_to_string,
+    _ToStringVisitor,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class _NotSpecified(object):
+class _NotSpecified:
     pass
 
 
@@ -116,16 +119,10 @@ class GetItemExpression(ExpressionBase):
         return "%s[%s]" % (values[0], ','.join(values[1:]))
 
     def _resolve_template(self, args):
-        return args[0].__getitem__(tuple(args[1:]))
+        return args[0].__getitem__(args[1:])
 
     def _apply_operation(self, result):
-        args = tuple(
-            arg
-            if arg.__class__ in native_types or not arg.is_numeric_type()
-            else value(arg)
-            for arg in result[1:]
-        )
-        return result[0].__getitem__(tuple(result[1:]))
+        return result[0].__getitem__(result[1:])
 
 
 class Numeric_GetItemExpression(GetItemExpression, NumericExpression):
@@ -230,6 +227,11 @@ class GetAttrExpression(ExpressionBase):
         #
         # TODO: deprecate (then remove) evaluating expressions by
         # "calling" them.
+        #
+        # [ESJ 3/25/25]: Note that since this always calls the ExpressionBase
+        # implementation of __call__ if 'exception' is specified, we need not
+        # check the type of the exception arg here--it will get checked in the
+        # base class.
         try:
             if not args:
                 if not kwargs:
@@ -256,8 +258,8 @@ class GetAttrExpression(ExpressionBase):
         return 2
 
     def _apply_operation(self, result):
-        assert len(result) == 2
-        return getattr(result[0], result[1])
+        obj, attr = result
+        return getattr(obj, attr)
 
     def _to_string(self, values, verbose, smap):
         assert len(values) == 2
@@ -271,7 +273,7 @@ class GetAttrExpression(ExpressionBase):
         return "%s.%s" % (values[0], attr)
 
     def _resolve_template(self, args):
-        return getattr(*tuple(args))
+        return getattr(*args)
 
 
 class Numeric_GetAttrExpression(GetAttrExpression, NumericExpression):
@@ -359,7 +361,7 @@ class CallExpression(NumericExpression):
         return self._apply_operation(args)
 
 
-class _TemplateSumExpression_argList(object):
+class _TemplateSumExpression_argList:
     """A virtual list to represent the expanded SumExpression args
 
     This class implements a "virtual args list" for
@@ -469,6 +471,15 @@ class TemplateSumExpression(NumericExpression):
     def _args_(self, args):
         self._local_args_ = args
 
+    def template_args(self):
+        ans = list(self._local_args_)
+        for itergroup in self._iters:
+            ans.append(itergroup[0]._set)
+        return tuple(ans)
+
+    def template_iters(self):
+        return self._iters
+
     def create_node_with_local_data(self, args):
         return self.__class__(args, self._iters)
 
@@ -495,18 +506,26 @@ class TemplateSumExpression(NumericExpression):
     def _apply_operation(self, result):
         return sum(result)
 
-    def _to_string(self, values, verbose, smap):
+    def to_string(self, verbose=None, smap=None):
         ans = ''
-        val = values[0]
+        assert len(self._local_args_) == 1
+        val = expression_to_string(self._local_args_[0], verbose=verbose, smap=smap)
         if val[0] == '(' and val[-1] == ')' and _balanced_parens(val[1:-1]):
             val = val[1:-1]
         iterStrGenerator = (
             (
-                ', '.join(str(i) for i in iterGroup),
+                ', '.join(
+                    (smap.getSymbol(i) if smap is not None else str(i))
+                    for i in iterGroup
+                ),
                 (
-                    iterGroup[0]._set.to_string(verbose=verbose)
+                    iterGroup[0]._set.to_string(verbose=verbose, smap=smap)
                     if hasattr(iterGroup[0]._set, 'to_string')
-                    else str(iterGroup[0]._set)
+                    else (
+                        smap.getSymbol(iterGroup[0]._set)
+                        if smap is not None
+                        else str(iterGroup[0]._set)
+                    )
                 ),
             )
             for iterGroup in self._iters
@@ -519,7 +538,19 @@ class TemplateSumExpression(NumericExpression):
             return 'SUM(%s %s)' % (val, iterStr)
 
     def _resolve_template(self, args):
-        return SumExpression(args)
+        with mutable_expression() as e:
+            for arg in args:
+                e += arg
+        if e.nargs() > 1:
+            return e
+        elif not e.nargs():
+            return 0
+        else:
+            return e.arg(0)
+
+
+# FIXME: This is a hack to get certain complex cases to print without error
+_ToStringVisitor._leaf_node_types.add(TemplateSumExpression)
 
 
 class IndexTemplate(NumericValue):
@@ -619,7 +650,7 @@ class IndexTemplate(NumericValue):
         # is not present.
         if lock is not self._lock:
             raise RuntimeError(
-                "The TemplateIndex %s is currently locked by %s and "
+                "The IndexTemplate %s is currently locked by %s and "
                 "cannot be set through lock %s" % (self, self._lock, lock)
             )
         if values is _NotSpecified:
@@ -650,20 +681,8 @@ class IndexTemplate(NumericValue):
 register_arg_type(IndexTemplate, ARG_TYPE.NPV)
 
 
-def resolve_template(expr):
-    """Resolve a template into a concrete expression
-
-    This takes a template expression and returns the concrete equivalent
-    by substituting the current values of all IndexTemplate objects and
-    resolving (evaluating and removing) all GetItemExpression,
-    GetAttrExpression, and TemplateSumExpression expression nodes.
-
-    """
-    wildcards = []
-    wildcard_groups = {}
-    level = -1
-
-    def beforeChild(node, child, child_idx):
+class _TemplateResolver(StreamBasedExpressionVisitor):
+    def beforeChild(self, node, child, child_idx):
         # Efficiency: do not descend into leaf nodes.
         if type(child) in native_types:
             return False, child
@@ -674,7 +693,7 @@ def resolve_template(expr):
         else:
             return True, None
 
-    def exitNode(node, args):
+    def exitNode(self, node, args):
         if hasattr(node, '_resolve_template'):
             return node._resolve_template(args)
         if len(args) == node.nargs() and all(a is b for a, b in zip(node.args, args)):
@@ -684,15 +703,28 @@ def resolve_template(expr):
         else:
             return node.create_node_with_local_data(args)
 
-    walker = StreamBasedExpressionVisitor(
-        initializeWalker=lambda x: beforeChild(None, x, None),
-        beforeChild=beforeChild,
-        exitNode=exitNode,
-    )
-    return walker.walk_expression(expr)
+    def initializeWalker(self, expr):
+        return self.beforeChild(None, expr, None)
 
 
-class _wildcard_info(object):
+def resolve_template(expr):
+    """Resolve a template into a concrete expression
+
+    This takes a template expression and returns the concrete equivalent
+    by substituting the current values of all IndexTemplate objects and
+    resolving (evaluating and removing) all GetItemExpression,
+    GetAttrExpression, and TemplateSumExpression expression nodes.
+
+    """
+    if resolve_template.visitor is None:
+        resolve_template.visitor = _TemplateResolver()
+    return resolve_template.visitor.walk_expression(expr)
+
+
+resolve_template.visitor = None
+
+
+class _wildcard_info:
     __slots__ = ('iter', 'source', 'value', 'original_value', 'objects')
 
     def __init__(self, src, obj):
@@ -852,25 +884,34 @@ class ReplaceTemplateExpression(ExpressionReplacementVisitor):
 
 
 def substitute_template_expression(expr, substituter, *args, **kwargs):
-    """Substitute IndexTemplates in an expression tree.
+    r"""Substitute IndexTemplates in an expression tree.
 
     This is a general utility function for walking the expression tree
     and substituting all occurrences of IndexTemplate and
     GetItemExpression nodes.
 
-    Args:
-        substituter: method taking (expression, *args) and returning
-           the new object
-        *args: these are passed directly to the substituter
+    Parameters
+    ----------
+    expr : NumericExpression
+        the source template expression
 
-    Returns:
+    substituter: Callable
+        method taking ``(expression, *args)`` and returning the new object
+
+    \*args:
+        positional arguments passed directly to the substituter
+
+    Returns
+    -------
+    NumericExpression :
         a new expression tree with all substitutions done
+
     """
     visitor = ReplaceTemplateExpression(substituter, *args, **kwargs)
     return visitor.walk_expression(expr)
 
 
-class _GetItemIndexer(object):
+class _GetItemIndexer:
     # Note that this class makes the assumption that only one template
     # ever appears in an expression for a single index
 
@@ -960,7 +1001,7 @@ def substitute_template_with_value(expr):
         return resolve_template(expr)
 
 
-class _set_iterator_template_generator(object):
+class _set_iterator_template_generator:
     """Replacement iterator that returns IndexTemplates
 
     In order to generate template expressions, we hijack the normal Set
@@ -1004,7 +1045,7 @@ class _set_iterator_template_generator(object):
     next = __next__
 
 
-class _template_iter_context(object):
+class _template_iter_context:
     """Manage the iteration context when generating templatized rules
 
     This class manages the context tracking when generating templatized
@@ -1043,8 +1084,8 @@ class _template_iter_context(object):
         return TemplateSumExpression((expr,), self.npop_cache(final_cache - init_cache))
 
 
-class _template_iter_manager(object):
-    class _iter_wrapper(object):
+class _template_iter_manager:
+    class _iter_wrapper:
         __slots__ = ('_class', '_iter', '_old_iter')
 
         def __init__(self, cls, context):
@@ -1061,7 +1102,7 @@ class _template_iter_manager(object):
         def release(self):
             self._class.__iter__ = self._old_iter
 
-    class _pause_template_iter_manager(object):
+    class _pause_template_iter_manager:
         __slots__ = ('iter_manager',)
 
         def __init__(self, iter_manager):

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import argparse
 import io
@@ -29,6 +27,7 @@ request = attempt_import('urllib.request')[0]
 urllib_error = attempt_import('urllib.error')[0]
 ssl = attempt_import('ssl')[0]
 zipfile = attempt_import('zipfile')[0]
+tarfile = attempt_import('tarfile')[0]
 gzip = attempt_import('gzip')[0]
 distro, distro_available = attempt_import('distro')
 
@@ -37,7 +36,7 @@ logger = logging.getLogger('pyomo.common.download')
 DownloadFactory = pyomo.common.Factory('library downloaders')
 
 
-class FileDownloader(object):
+class FileDownloader:
     _os_version = None
 
     def __init__(self, insecure=False, cacert=None):
@@ -176,6 +175,7 @@ class FileDownloader(object):
 
         This method was designed to help identify compatible binaries,
         and will return strings similar to:
+
           - rhel6
           - fedora24
           - ubuntu18.04
@@ -371,7 +371,7 @@ class FileDownloader(object):
         # Simple sanity checks
         for info in zip_file.infolist():
             f = info.filename
-            if f[0] in '\\/' or '..' in f:
+            if f[0] in '\\/' or '..' in f or os.path.isabs(f):
                 logger.error(
                     "malformed (potentially insecure) filename (%s) "
                     "found in zip archive.  Skipping file." % (f,)
@@ -386,6 +386,72 @@ class FileDownloader(object):
                 continue
             info.filename = target[-1] + '/' if f[-1] == '/' else target[-1]
             zip_file.extract(f, os.path.join(self._fname, *tuple(target[dirOffset:-1])))
+
+    def get_tar_archive(self, url, dirOffset=0):
+        if self._fname is None:
+            raise DeveloperError(
+                "target file name has not been initialized "
+                "with set_destination_filename"
+            )
+        if os.path.exists(self._fname) and not os.path.isdir(self._fname):
+            raise RuntimeError(
+                "Target directory (%s) exists, but is not a directory" % (self._fname,)
+            )
+
+        def filter_fcn(info):
+            # this mocks up the `tarfile` filter introduced in Python
+            # 3.12 and backported to later releases of Python (e.g.,
+            # 3.8.17, 3.9.17, 3.10.12, and 3.11.4)
+            f = info.name
+            if os.path.isabs(f) or '..' in f or f.startswith(('/', os.sep)):
+                logger.error(
+                    "malformed or potentially insecure filename (%s).  "
+                    "Skipping file." % (f,)
+                )
+                return False
+            target = self._splitpath(f)
+            if len(target) <= dirOffset:
+                if not info.isdir():
+                    logger.warning(
+                        "Skipping file (%s) in tar archive due to dirOffset." % (f,)
+                    )
+                return False
+            info.name = f = '/'.join(target[dirOffset:])
+            target = os.path.realpath(os.path.join(dest, f))
+            try:
+                if os.path.commonpath([target, dest]) != dest:
+                    logger.error(
+                        "potentially insecure filename (%s) resolves outside target "
+                        "directory.  Skipping file." % (f,)
+                    )
+                    return False
+            except ValueError:
+                # commonpath() will raise ValueError for paths that
+                # don't have anything in common (notably, when files are
+                # on different drives on Windows)
+                logger.error(
+                    "potentially insecure filename (%s) resolves outside target "
+                    "directory.  Skipping file." % (f,)
+                )
+                return False
+            # Strip high bits & group/other write bits
+            info.mode &= 0o755
+            return True
+
+        if sys.version_info[:2] < (3, 12):
+            tar_args = {}
+        else:
+            # Add a tar filter to suppress deprecation warning in Python 3.12+
+            #
+            # Note that starting in Python 3.14 the default is 'data',
+            # however, this method is already filtering for many of the
+            # things that 'data' would catch (and raise an exception
+            # for).  For backwards compatibility, we will use the more
+            # permissive "tar" filter.
+            tar_args = {'filter': tarfile.tar_filter}
+        with tarfile.open(fileobj=io.BytesIO(self.retrieve_url(url))) as TAR:
+            dest = os.path.realpath(self._fname)
+            TAR.extractall(dest, filter(filter_fcn, TAR.getmembers()), **tar_args)
 
     def get_gzipped_binary_file(self, url):
         if self._fname is None:

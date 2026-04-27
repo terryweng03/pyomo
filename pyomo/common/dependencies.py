@@ -1,30 +1,35 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
-from collections.abc import Mapping
 import inspect
 import importlib
+import importlib.util
 import logging
 import sys
 import warnings
 
-from .deprecation import deprecated, deprecation_warning, in_testing_environment
-from .errors import DeferredImportError
-from . import numeric_types
+from collections.abc import Mapping
+from types import ModuleType
+from typing import List
 
+from pyomo.common.deprecation import deprecated, deprecation_warning
+from pyomo.common.errors import DeferredImportError
+from pyomo.common.flags import (
+    in_testing_environment,
+    building_documentation,
+    serializing,
+)
 
 SUPPRESS_DEPENDENCY_WARNINGS = False
 
 
-class ModuleUnavailable(object):
+class ModuleUnavailable:
     """Mock object that raises :py:class:`.DeferredImportError` upon attribute access
 
     This object is returned by :py:func:`attempt_import()` in lieu of
@@ -68,10 +73,9 @@ class ModuleUnavailable(object):
         self._moduleunavailable_info_ = (message, version_error, import_error, package)
 
     def __getattr__(self, attr):
-        if attr in ModuleUnavailable._getattr_raises_attributeerror:
-            raise AttributeError(
-                "'%s' object has no attribute '%s'" % (type(self).__name__, attr)
-            )
+        if serializing() or attr in ModuleUnavailable._getattr_raises_attributeerror:
+            msg = "'%s' object has no attribute '%s'" % (type(self).__name__, attr)
+            raise AttributeError(msg)
         raise DeferredImportError(self._moduleunavailable_message())
 
     def __getstate__(self):
@@ -123,12 +127,12 @@ class ModuleUnavailable(object):
         self.log_import_warning(logger)
 
 
-class DeferredImportModule(object):
+class DeferredImportModule:
     """Mock module object to support the deferred import of a module.
 
     This object is returned by :py:func:`attempt_import()` in lieu of
     the module when :py:func:`attempt_import()` is called with
-    ``defer_check=True``.  Any attempts to access attributes on this
+    ``defer_import=True``.  Any attempts to access attributes on this
     object will trigger the actual module import and return either the
     appropriate module attribute or else if the module import fails,
     raise a :py:class:`.DeferredImportError` exception.
@@ -224,6 +228,13 @@ def UnavailableClass(unavailable_module):
 
     As does attempting to access class attributes on the derived class:
 
+    .. testcode::
+       :hide:
+
+       # We suppress this exception when building the documentation
+       # from pyomo.common.flags import building_documentation
+       building_documentation(False)
+
     .. doctest::
 
        >>> MyPlugin.create_instance()
@@ -234,10 +245,21 @@ def UnavailableClass(unavailable_module):
        dependency was not found (import raised ModuleNotFoundError: No module
        named 'bogus_unavailable_class')
 
+    .. testcode::
+       :hide:
+
+       building_documentation(None)
+
     """
 
     class UnavailableMeta(type):
         def __getattr__(cls, name):
+            if building_documentation():
+                # If we are building documentation, avoid the
+                # DeferredImportError (we will still raise one if
+                # someone attempts to *create* an instance of this
+                # class)
+                return getattr(super(), name)
             raise DeferredImportError(
                 unavailable_module._moduleunavailable_message(
                     f"The class attribute '{cls.__name__}.{name}' is not available "
@@ -257,7 +279,7 @@ def UnavailableClass(unavailable_module):
     return UnavailableBase
 
 
-class _DeferredImportIndicatorBase(object):
+class _DeferredImportIndicatorBase:
     def __and__(self, other):
         return _DeferredAnd(self, other)
 
@@ -313,10 +335,19 @@ class DeferredImportIndicator(_DeferredImportIndicatorBase):
         self._module = None
         self._available = None
         self._deferred_submodules = deferred_submodules
+        # If this import has a callback, then record this deferred
+        # import so that any direct imports of this module also trigger
+        # the resolution of this DeferredImportIndicator (and the
+        # corresponding callback)
+        if callback is not None:
+            DeferredImportCallbackFinder._callbacks.setdefault(name, []).append(self)
 
     def __bool__(self):
         self.resolve()
-        return self._available
+        # resolve() guarantees that _available has been resolved to a bool
+        assert self._available.__class__ is bool
+        # The following cast is to keep static code analysis linters happy
+        return bool(self._available)
 
     def resolve(self):
         # Only attempt the import once, then cache some form of result
@@ -413,25 +444,108 @@ def check_min_version(module, min_version):
             module = indicator._module
         else:
             return False
-    if check_min_version._parser is None:
-        try:
-            from packaging import version as _version
-
-            _parser = _version.parse
-        except ImportError:
-            # pkg_resources is an order of magnitude slower to import than
-            # packaging.  Only use it if the preferred (but optional)
-            # packaging library is not present
-            from pkg_resources import parse_version as _parser
-        check_min_version._parser = _parser
-    else:
-        _parser = check_min_version._parser
 
     version = getattr(module, '__version__', '0.0.0')
-    return _parser(min_version) <= _parser(version)
+    return packaging.version.parse(min_version) <= packaging.version.parse(version)
 
 
-check_min_version._parser = None
+#
+# Note that we are duck-typing the Loader and MetaPathFinder base
+# classes from importlib.abc.  This avoids a (surprisingly costly)
+# import of importlib.abc
+#
+class DeferredImportCallbackLoader:
+    """Custom Loader to resolve registered :py:class:`DeferredImportIndicator` objects
+
+    This :py:class:`importlib.abc.Loader` loader wraps a regular loader
+    and automatically resolves the registered
+    :py:class:`DeferredImportIndicator` objects after the module is
+    loaded.
+
+    """
+
+    def __init__(self, loader, deferred_indicators: List[DeferredImportIndicator]):
+        self._loader = loader
+        self._deferred_indicators = deferred_indicators
+
+    def module_repr(self, module: ModuleType) -> str:
+        return self._loader.module_repr(module)
+
+    def create_module(self, spec) -> ModuleType:
+        return self._loader.create_module(spec)
+
+    def exec_module(self, module: ModuleType) -> None:
+        self._loader.exec_module(module)
+        # Now that the module has been loaded, trigger the resolution of
+        # the deferred indicators (and their associated callbacks)
+        for deferred in self._deferred_indicators:
+            deferred.resolve()
+
+    def load_module(self, fullname) -> ModuleType:
+        return self._loader.load_module(fullname)
+
+    def get_resource_reader(self, fullname):
+        return self._loader.get_resource_reader(fullname)
+
+
+class DeferredImportCallbackFinder:
+    """Custom Finder that will wrap the normal loader to trigger callbacks
+
+    This :py:class:`importlib.abc.MetaPathFinder` finder will wrap the
+    normal loader returned by ``PathFinder`` with a loader that will
+    trigger custom callbacks after the module is loaded.  We use this to
+    trigger the post import callbacks registered through
+    :py:func:`attempt_import` even when a user imports the target library
+    directly (and not through attribute access on the
+    :py:class:`DeferredImportModule`.
+
+    """
+
+    _callbacks = {}
+
+    def find_spec(self, fullname, path, target=None):
+        if fullname not in self._callbacks:
+            return None
+
+        spec = None
+        # Continue looking for the finder that would have originally
+        # loaded the deferred import module by starting at the next
+        # finder in sys.meta_path (this way, we are agnostic to where
+        # the module is coming from: file system, registry, etc.)
+        for finder in sys.meta_path[sys.meta_path.index(self) + 1 :]:
+            if hasattr(finder, 'find_spec'):
+                # Support standard importlib MetaPathFinders
+                spec = finder.find_spec(fullname, path, target)
+                if spec is not None:
+                    break
+            else:
+                # Support for imp finders/loaders (deprecated, but
+                # supported through Python 3.11)
+                loader = finder.find_module(fullname, path)
+                if loader is not None:
+                    spec = importlib.util.spec_from_loader(fullname, loader)
+                    break
+        else:
+            # Module not found.  Returning None will proceed to the next
+            # finder (which will eventually raise a ModuleNotFoundError)
+            return None
+        # Override the loader to trigger the finalization callback
+        # after the original loader is finished
+        spec.loader = DeferredImportCallbackLoader(
+            spec.loader, self._callbacks[fullname]
+        )
+        return spec
+
+    def invalidate_caches(self):
+        pass
+
+
+_DeferredImportCallbackFinder = DeferredImportCallbackFinder()
+# Insert the DeferredImportCallbackFinder at the beginning of the
+# sys.meta_path so that it is found before the standard finders (so that
+# we can correctly inject the resolution of the DeferredImportIndicators
+# -- which triggers the needed callbacks)
+sys.meta_path.insert(0, _DeferredImportCallbackFinder)
 
 
 def attempt_import(
@@ -442,7 +556,8 @@ def attempt_import(
     alt_names=None,
     callback=None,
     importer=None,
-    defer_check=True,
+    defer_check=None,
+    defer_import=None,
     deferred_submodules=None,
     catch_exceptions=None,
 ):
@@ -496,7 +611,8 @@ def attempt_import(
         The message for the exception raised by :py:class:`ModuleUnavailable`
 
     only_catch_importerror: bool, optional
-        DEPRECATED: use catch_exceptions instead or only_catch_importerror.
+        DEPRECATED: use ``catch_exceptions`` instead of ``only_catch_importerror``.
+
         If True (the default), exceptions other than ``ImportError`` raised
         during module import will be reraised.  If False, any exception
         will result in returning a :py:class:`ModuleUnavailable` object.
@@ -507,13 +623,14 @@ def attempt_import(
         ``module.__version__``)
 
     alt_names: list, optional
-        DEPRECATED: alt_names no longer needs to be specified and is ignored.
+        DEPRECATED: ``alt_names`` no longer needs to be specified and is ignored.
+
         A list of common alternate names by which to look for this
         module in the ``globals()`` namespaces.  For example, the alt_names
         for NumPy would be ``['np']``.  (deprecated in version 6.0)
 
-    callback: function, optional
-        A function with the signature "``fcn(module, available)``" that
+    callback: Callable[[ModuleType, bool], None], optional
+        A function with the signature ``fcn(module, available)`` that
         will be called after the import is first attempted.
 
     importer: function, optional
@@ -523,10 +640,16 @@ def attempt_import(
         want to import/return the first one that is available.
 
     defer_check: bool, optional
-        If True (the default), then the attempted import is deferred
-        until the first use of either the module or the availability
-        flag.  The method will return instances of :py:class:`DeferredImportModule`
-        and :py:class:`DeferredImportIndicator`.
+        DEPRECATED: renamed to ``defer_import`` (deprecated in version 6.7.2)
+
+    defer_import: bool, optional
+        If True, then the attempted import is deferred until the first
+        use of either the module or the availability flag.  The method
+        will return instances of :py:class:`DeferredImportModule` and
+        :py:class:`DeferredImportIndicator`.  If False, the import will
+        be attempted immediately.  If not set, then the import will be
+        deferred unless the ``name`` is already present in
+        ``sys.modules``.
 
     deferred_submodules: Iterable[str], optional
         If provided, an iterable of submodule names within this module
@@ -577,9 +700,26 @@ def attempt_import(
     if catch_exceptions is None:
         catch_exceptions = (ImportError,)
 
+    if defer_check is not None:
+        deprecation_warning(
+            'defer_check=%s is deprecated.  Please use defer_import' % (defer_check,),
+            version='6.7.2',
+        )
+        assert defer_import is None
+        defer_import = defer_check
+
+    # If the module has already been imported, there is no reason to
+    # further defer things: just import it.
+    if defer_import is None:
+        if name in sys.modules:
+            defer_import = False
+            deferred_submodules = None
+        else:
+            defer_import = True
+
     # If we are going to defer the check until later, return the
     # deferred import module object
-    if defer_check:
+    if defer_import:
         if deferred_submodules:
             if isinstance(deferred_submodules, Mapping):
                 deprecation_warning(
@@ -622,7 +762,7 @@ def attempt_import(
         return DeferredImportModule(indicator, deferred, None), indicator
 
     if deferred_submodules:
-        raise ValueError("deferred_submodules is only valid if defer_check==True")
+        raise ValueError("deferred_submodules is only valid if defer_import==True")
 
     return _perform_import(
         name=name,
@@ -673,6 +813,11 @@ def _perform_import(
     return module, False
 
 
+@deprecated(
+    "``declare_deferred_modules_as_importable()`` is deprecated.  "
+    "Use the :py:class:`declare_modules_as_importable` context manager.",
+    version='6.7.2',
+)
 def declare_deferred_modules_as_importable(globals_dict):
     """Make all :py:class:`DeferredImportModules` in ``globals_dict`` importable
 
@@ -713,20 +858,87 @@ def declare_deferred_modules_as_importable(globals_dict):
     :py:class:`ModuleUnavailable` instance.
 
     """
-    _global_name = globals_dict['__name__'] + '.'
-    deferred = list(
-        (k, v) for k, v in globals_dict.items() if type(v) is DeferredImportModule
-    )
-    while deferred:
-        name, mod = deferred.pop(0)
-        mod.__path__ = None
-        mod.__spec__ = None
-        sys.modules[_global_name + name] = mod
-        deferred.extend(
-            (name + '.' + k, v)
-            for k, v in mod.__dict__.items()
-            if type(v) is DeferredImportModule
-        )
+    return declare_modules_as_importable(globals_dict).__exit__(None, None, None)
+
+
+class declare_modules_as_importable:
+    """Make all :py:class:`ModuleType` and :py:class:`DeferredImportModules`
+    importable through the ``globals_dict`` context.
+
+    This context manager will detect all modules imported into the
+    specified ``globals_dict`` environment (either directly or through
+    :py:func:`attempt_import`) and will make those modules importable
+    from the specified ``globals_dict`` context.  It works by detecting
+    changes in the specified ``globals_dict`` dictionary and adding any new
+    modules or instances of :py:class:`DeferredImportModule` that it
+    finds (and any of their deferred submodules) to ``sys.modules`` so
+    that the modules can be imported through the ``globals_dict``
+    namespace.
+
+    For example, ``pyomo/common/dependencies.py`` declares:
+
+    .. doctest::
+       :hide:
+
+       >>> from pyomo.common.dependencies import (
+       ...     attempt_import, _finalize_scipy, __dict__ as dep_globals,
+       ...     declare_modules_as_importable, )
+       >>> # Sphinx does not provide a proper globals()
+       >>> def globals(): return dep_globals
+
+    .. doctest::
+
+       >>> with declare_modules_as_importable(globals()):
+       ...     scipy, scipy_available = attempt_import(
+       ...        'scipy', callback=_finalize_scipy,
+       ...        deferred_submodules=['stats', 'sparse', 'spatial', 'integrate'])
+
+    Which enables users to use:
+
+    .. doctest::
+
+       >>> import pyomo.common.dependencies.scipy.sparse as spa
+
+    If the deferred import has not yet been triggered, then the
+    :py:class:`DeferredImportModule` is returned and named ``spa``.
+    However, if the import has already been triggered, then ``spa`` will
+    either be the ``scipy.sparse`` module, or a
+    :py:class:`ModuleUnavailable` instance.
+
+    """
+
+    def __init__(self, globals_dict):
+        self.globals_dict = globals_dict
+        self.init_dict = {}
+        self.init_modules = None
+
+    def __enter__(self):
+        self.init_dict.update(self.globals_dict)
+        self.init_modules = set(sys.modules)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        _global_name = self.globals_dict['__name__'] + '.'
+        deferred = {
+            k: v
+            for k, v in self.globals_dict.items()
+            if k not in self.init_dict
+            and isinstance(v, (ModuleType, DeferredImportModule))
+        }
+        if self.init_modules:
+            for name in set(sys.modules) - self.init_modules:
+                if '.' in name and name.split('.', 1)[0] in deferred:
+                    sys.modules[_global_name + name] = sys.modules[name]
+        while deferred:
+            name, mod = deferred.popitem()
+            sys.modules[_global_name + name] = mod
+            if isinstance(mod, DeferredImportModule):
+                mod.__path__ = None
+                mod.__spec__ = None
+                deferred.update(
+                    (name + '.' + k, v)
+                    for k, v in mod.__dict__.items()
+                    if type(v) is DeferredImportModule
+                )
 
 
 #
@@ -741,6 +953,12 @@ def _finalize_yaml(module, available):
     # not set
     if available and hasattr(module, 'SafeLoader'):
         yaml_load_args['Loader'] = module.SafeLoader
+
+
+def _finalize_ctypes(module, available):
+    # ctypes.util must be explicitly imported (and fileutils assumes
+    # this has already happened)
+    import ctypes.util
 
 
 def _finalize_scipy(module, available):
@@ -763,6 +981,12 @@ def _finalize_pympler(module, available):
         import pympler.muppy
 
 
+def _finalize_packaging(module, available):
+    if available:
+        # Import key subpackages that we will want to assume are present
+        import packaging.version
+
+
 def _finalize_matplotlib(module, available):
     if not available:
         return
@@ -773,11 +997,26 @@ def _finalize_matplotlib(module, available):
     if in_testing_environment():
         module.use('Agg')
     import matplotlib.pyplot
+    import matplotlib.pylab
+    import matplotlib.backends
+
+
+def _finalize_mpi4py(module, available):
+    if not available:
+        return
+    import mpi4py.MPI
 
 
 def _finalize_numpy(np, available):
     if not available:
         return
+    # scipy has a dependence on numpy.testing, and if we don't import it
+    # as part of resolving numpy, then certain deferred scipy imports
+    # fail when run under pytest.
+    import numpy.testing
+
+    from . import numeric_types
+
     # Register ndarray as a native type to prevent 1-element ndarrays
     # from accidentally registering ndarray as a native_numeric_type.
     numeric_types.native_types.add(np.ndarray)
@@ -800,10 +1039,13 @@ def _finalize_numpy(np, available):
         # registration here (to bypass the deprecation warning) until we
         # finally remove all support for it
         numeric_types._native_boolean_types.add(t)
-    _floats = [np.float_, np.float16, np.float32, np.float64]
+    _floats = [np.float16, np.float32, np.float64]
     # float96 and float128 may or may not be defined in this particular
     # numpy build (it depends on platform and version).
     # Register them only if they are present
+    if hasattr(np, 'float_'):
+        # Prepend to preserve previous functionality
+        _floats.insert(0, np.float_)
     if hasattr(np, 'float96'):
         _floats.append(np.float96)
     if hasattr(np, 'float128'):
@@ -814,10 +1056,13 @@ def _finalize_numpy(np, available):
         # registration here (to bypass the deprecation warning) until we
         # finally remove all support for it
         numeric_types._native_boolean_types.add(t)
-    _complex = [np.complex_, np.complex64, np.complex128]
+    _complex = [np.complex64, np.complex128]
     # complex192 and complex256 may or may not be defined in this
     # particular numpy build (it depends on platform and version).
     # Register them only if they are present
+    if hasattr(np, 'np.complex_'):
+        # Prepend to preserve functionality
+        _complex.insert(0, np.complex_)
     if hasattr(np, 'complex192'):
         _complex.append(np.complex192)
     if hasattr(np, 'complex256'):
@@ -826,33 +1071,64 @@ def _finalize_numpy(np, available):
         numeric_types.RegisterComplexType(t)
 
 
-dill, dill_available = attempt_import('dill')
-mpi4py, mpi4py_available = attempt_import('mpi4py')
-networkx, networkx_available = attempt_import('networkx')
-numpy, numpy_available = attempt_import('numpy', callback=_finalize_numpy)
-pandas, pandas_available = attempt_import('pandas')
-plotly, plotly_available = attempt_import('plotly')
-pympler, pympler_available = attempt_import('pympler', callback=_finalize_pympler)
-pyutilib, pyutilib_available = attempt_import('pyutilib')
-scipy, scipy_available = attempt_import(
-    'scipy',
-    callback=_finalize_scipy,
-    deferred_submodules=['stats', 'sparse', 'spatial', 'integrate'],
-)
-yaml, yaml_available = attempt_import('yaml', callback=_finalize_yaml)
+def _pyutilib_importer():
+    # On newer Pythons, PyUtilib import will fail, but only if a
+    # second-level module is imported.  We will arbitrarily choose to
+    # check pyutilib.component (as that is the path exercised by the
+    # pyomo.common.tempfiles deprecation path)
+    importlib.import_module('pyutilib.component')
+    return importlib.import_module('pyutilib')
 
-# Note that matplotlib.pyplot can generate a runtime error on OSX when
-# not installed as a Framework (as is the case in the CI systems)
-matplotlib, matplotlib_available = attempt_import(
-    'matplotlib',
-    callback=_finalize_matplotlib,
-    deferred_submodules=['pyplot', 'pylab'],
-    catch_exceptions=(ImportError, RuntimeError),
-)
+
+with declare_modules_as_importable(globals()):
+    # Standard libraries that are slower to import and not strictly required
+    # on all platforms / situations.
+    ctypes, _ = attempt_import(
+        'ctypes', deferred_submodules=['util'], callback=_finalize_ctypes
+    )
+    multiprocessing, _ = attempt_import('multiprocessing')
+    random, _ = attempt_import('random')
+
+    # Necessary for minimum version checking for other optional dependencies
+    packaging, packaging_available = attempt_import(
+        'packaging', deferred_submodules=['version'], callback=_finalize_packaging
+    )
+    # Commonly-used optional dependencies
+    dill, dill_available = attempt_import('dill')
+    mpi4py, mpi4py_available = attempt_import(
+        'mpi4py', deferred_submodules=['MPI'], callback=_finalize_mpi4py
+    )
+    networkx, networkx_available = attempt_import('networkx')
+    numpy, numpy_available = attempt_import('numpy', callback=_finalize_numpy)
+    pandas, pandas_available = attempt_import('pandas')
+    pathlib, pathlib_available = attempt_import('pathlib')
+    pint, pint_available = attempt_import(
+        'pint',
+        # TypeError for pint<=0.24.3 and python>=3.13
+        catch_exceptions=(ImportError, TypeError),
+    )
+    plotly, plotly_available = attempt_import('plotly')
+    pympler, pympler_available = attempt_import('pympler', callback=_finalize_pympler)
+    pyutilib, pyutilib_available = attempt_import(
+        'pyutilib', importer=_pyutilib_importer
+    )
+    scipy, scipy_available = attempt_import(
+        'scipy',
+        callback=_finalize_scipy,
+        deferred_submodules=['stats', 'sparse', 'spatial', 'integrate'],
+    )
+    yaml, yaml_available = attempt_import('yaml', callback=_finalize_yaml)
+
+    # Note that matplotlib.pyplot can generate a runtime error on OSX when
+    # not installed as a Framework (as is the case in the CI systems)
+    matplotlib, matplotlib_available = attempt_import(
+        'matplotlib',
+        callback=_finalize_matplotlib,
+        deferred_submodules=['pyplot', 'pylab', 'backends'],
+        catch_exceptions=(ImportError, RuntimeError),
+    )
 
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
-
-declare_deferred_modules_as_importable(globals())

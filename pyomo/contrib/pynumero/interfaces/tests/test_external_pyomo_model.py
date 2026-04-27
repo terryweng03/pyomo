@@ -1,18 +1,17 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import itertools
 import pyomo.common.unittest as unittest
 import pyomo.environ as pyo
 
+from pyomo.common.dependencies import networkx_available as nx_available
 from pyomo.contrib.pynumero.dependencies import (
     numpy as np,
     numpy_available,
@@ -46,7 +45,7 @@ if not pyo.SolverFactory("ipopt").available():
     raise unittest.SkipTest("Need IPOPT to run ExternalPyomoModel tests")
 
 
-class SimpleModel1(object):
+class SimpleModel1:
     def make_model(self):
         m = pyo.ConcreteModel()
         m.x = pyo.Var(initialize=2.0)
@@ -79,7 +78,7 @@ class SimpleModel1(object):
         return 2 + 0.24 / x**4
 
 
-class SimpleModel2(object):
+class SimpleModel2:
     """
     The purpose of this model is to exercise each term in the computation
     of the d2ydx2 Hessian.
@@ -112,7 +111,7 @@ class SimpleModel2(object):
         return 2 + 6 * 0.2 ** (2 / 3) / x**4
 
 
-class SimpleModel2by2_1(object):
+class SimpleModel2by2_1:
     """
     The purpose of this model is to test second derivative computation
     when the external model is nonlinear only in x. This exercises
@@ -227,7 +226,7 @@ class SimpleModel2by2_1(object):
         return [dy0dxdx, dy1dxdx]
 
 
-class Model2by2(object):
+class Model2by2:
     """
     The purpose of this model is to test d2ydx2 Hessian computation when
     transposes result in a nontrivial modification of Hessian/Jacobian
@@ -513,6 +512,7 @@ class TestGetHessianOfConstraint(unittest.TestCase):
         np.testing.assert_allclose(hess.data, data, rtol=1e-8)
 
 
+@unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
 class TestExternalPyomoModel(unittest.TestCase):
     def test_evaluate_SimpleModel1(self):
         model = SimpleModel1()
@@ -838,6 +838,7 @@ class TestExternalPyomoModel(unittest.TestCase):
             np.testing.assert_allclose(hess_lag, expected_hess_lag, rtol=1e-8)
 
 
+@unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
 class TestUpdatedHessianCalculationMethods(unittest.TestCase):
     """
     These tests exercise the methods for fast Hessian-of-Lagrangian
@@ -901,11 +902,9 @@ class TestUpdatedHessianCalculationMethods(unittest.TestCase):
             # multipliers won't necessarily correspond).
             external_model.set_external_constraint_multipliers(lam)
             hlxx, hlxy, hlyy = external_model.get_full_space_lagrangian_hessians()
-            (
-                pred_hlxx,
-                pred_hlxy,
-                pred_hlyy,
-            ) = model.calculate_full_space_lagrangian_hessians(lam, x)
+            pred_hlxx, pred_hlxy, pred_hlyy = (
+                model.calculate_full_space_lagrangian_hessians(lam, x)
+            )
 
             # TODO: Is comparing the array representation sufficient here?
             # Should I make sure I get the sparse representation I expect?
@@ -1023,6 +1022,7 @@ class TestUpdatedHessianCalculationMethods(unittest.TestCase):
             )
 
 
+@unittest.skipUnless(nx_available, "SCCImplicitFunctionSolver requires networkx")
 class TestScaling(unittest.TestCase):
     def con_3_body(self, x, y, u, v):
         return 1e5 * x**2 + 1e4 * y**2 + 1e1 * u**2 + 1e0 * v**2

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.dae.flatten import flatten_dae_components
 from pyomo.common.modeling import NOTSET
@@ -49,7 +47,7 @@ def _to_iterable(item):
         yield item
 
 
-class DynamicModelInterface(object):
+class DynamicModelInterface:
     """A helper class for working with dynamic models, e.g. those where
     many components are indexed by some ordered set referred to as "time."
 
@@ -172,6 +170,7 @@ class DynamicModelInterface(object):
         prefer_left=None,
         exclude_left_endpoint=None,
         exclude_right_endpoint=None,
+        ignore_named_expressions=False,
     ):
         """Method to load data into the model.
 
@@ -180,16 +179,21 @@ class DynamicModelInterface(object):
 
         Arguments
         ---------
-        data: ScalarData, TimeSeriesData, or mapping
-            If ScalarData, loads values into indicated variables at
-            all (or specified) time points. If TimeSeriesData, loads
-            lists of values into time points.
-            If mapping, checks whether each variable and value is
-            indexed or iterable and correspondingly loads data into
+        data: ~scalar_data.ScalarData, TimeSeriesData, or mapping
+            If :class:`ScalarData`, loads values into indicated
+            variables at all (or specified) time points. If
+            :class:`TimeSeriesData`, loads lists of values into time
+            points.  If mapping, checks whether each variable and value
+            is indexed or iterable and correspondingly loads data into
             variables.
+
         time_points: Iterable (optional)
             Subset of time points into which data should be loaded.
             Default of None corresponds to loading into all time points.
+
+        ignore_named_expressions: (optional)
+            ignore data for named expressions, otherwise a TypeError will
+            be raise on encountering a named expression.
 
         """
         if time_points is None:
@@ -212,10 +216,21 @@ class DynamicModelInterface(object):
             # This covers the case of non-time-indexed variables
             # as keys.
             _error_if_used(prefer_left, excl_left, excl_right, type(data))
-            load_data_from_scalar(data, self.model, time_points)
+            load_data_from_scalar(
+                data,
+                self.model,
+                time_points,
+                ignore_named_expressions=ignore_named_expressions,
+            )
         elif isinstance(data, TimeSeriesData):
             _error_if_used(prefer_left, excl_left, excl_right, type(data))
-            load_data_from_series(data, self.model, time_points, tolerance=tolerance)
+            load_data_from_series(
+                data,
+                self.model,
+                time_points,
+                tolerance=tolerance,
+                ignore_named_expressions=ignore_named_expressions,
+            )
         elif isinstance(data, IntervalData):
             prefer_left = True if prefer_left is None else prefer_left
             excl_left = prefer_left if excl_left is None else excl_left
@@ -228,6 +243,7 @@ class DynamicModelInterface(object):
                 prefer_left=prefer_left,
                 exclude_left_endpoint=excl_left,
                 exclude_right_endpoint=excl_right,
+                ignore_named_expressions=ignore_named_expressions,
             )
 
     def copy_values_at_time(self, source_time=None, target_time=None):
@@ -299,7 +315,7 @@ class DynamicModelInterface(object):
 
         Parameters
         ----------
-        target_data: ScalarData, TimeSeriesData, or IntervalData
+        target_data: ~scalar_data.ScalarData, TimeSeriesData, or IntervalData
             Holds target values for variables
         time: Set (optional)
             Points at which to apply the tracking cost. Default will use
@@ -307,7 +323,7 @@ class DynamicModelInterface(object):
         variables: List of Pyomo VarData (optional)
             Subset of variables supplied in setpoint_data to use in the
             tracking cost. Default is to use all variables supplied.
-        weight_data: ScalarData (optional)
+        weight_data: ~scalar_data.ScalarData (optional)
             Holds the weights to use in the tracking cost for each variable
         variable_set: Set (optional)
             A set indexing the list of provided variables, if one already

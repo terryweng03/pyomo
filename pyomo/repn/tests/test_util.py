@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import logging
 import math
@@ -19,6 +17,7 @@ from pyomo.common.collections import ComponentMap
 from pyomo.common.errors import DeveloperError, InvalidValueError
 from pyomo.common.log import LoggingIntercept
 from pyomo.core.expr import (
+    NumericExpression,
     ProductExpression,
     NPV_ProductExpression,
     SumExpression,
@@ -93,14 +92,14 @@ class TestRepnUtils(unittest.TestCase):
     @unittest.skipIf(not numpy_available, "NumPy is not available")
     def test_ftoa_precision(self):
         log = StringIO()
-        with LoggingIntercept(log, 'pyomo.core', logging.WARNING):
+        with LoggingIntercept(log, 'pyomo', logging.WARNING):
             f = np.longdouble('1.1234567890123456789')
             a = ftoa(f)
         self.assertEqual(a, '1.1234567890123457')
         # Depending on the platform, np.longdouble may or may not have
         # higher precision than float:
         if f == float(f):
-            test = self.assertNotRegexpMatches
+            test = self.assertNotRegex
         else:
             test = self.assertRegex
         test(
@@ -241,7 +240,7 @@ class TestRepnUtils(unittest.TestCase):
             pyomo.repn.util.HALT_ON_EVALUATION_ERROR = False
             with LoggingIntercept() as LOG:
                 val = apply_node_operation(div, [1, 0])
-                self.assertEqual(str(val), "InvalidNumber(nan)")
+                self.assertStructuredAlmostEqual(val, InvalidNumber(float('nan')))
             self.assertEqual(
                 LOG.getvalue(),
                 "Exception encountered evaluating expression 'div(1, 0)'\n"
@@ -253,7 +252,7 @@ class TestRepnUtils(unittest.TestCase):
             pyomo.repn.util.HALT_ON_EVALUATION_ERROR = _halt
 
     def test_complex_number_error(self):
-        class Visitor(object):
+        class Visitor:
             pass
 
         visitor = Visitor()
@@ -292,7 +291,7 @@ class TestRepnUtils(unittest.TestCase):
             pyomo.repn.util.HALT_ON_EVALUATION_ERROR = False
             with LoggingIntercept() as LOG:
                 val = complex_number_error(1j, visitor, exp)
-                self.assertEqual(str(val), "InvalidNumber(1j)")
+                self.assertEqual(val, InvalidNumber(1j))
             self.assertEqual(
                 LOG.getvalue(),
                 "Complex number returned from expression\n"
@@ -379,7 +378,7 @@ class TestRepnUtils(unittest.TestCase):
         )
         self.assertEqual(
             FileDeterminism_to_SortComponents(FileDeterminism.ORDERED),
-            SortComponents.unsorted,
+            SortComponents.deterministic,
         )
         self.assertEqual(
             FileDeterminism_to_SortComponents(FileDeterminism.SORT_INDICES),
@@ -391,7 +390,7 @@ class TestRepnUtils(unittest.TestCase):
         )
 
     def test_initialize_var_map_from_column_order(self):
-        class MockConfig(object):
+        class MockConfig:
             column_order = None
             file_determinism = FileDeterminism(0)
 
@@ -480,7 +479,7 @@ class TestRepnUtils(unittest.TestCase):
         MockConfig.file_determinism = FileDeterminism.ORDERED
         self.assertEqual(
             list(initialize_var_map_from_column_order(m, MockConfig, {}).values()),
-            [m.b.y[7], m.b.y[6], m.y[3], m.y[2], m.c.y[4], m.x],
+            [m.b.y[7], m.b.y[6], m.y[3], m.y[2], m.c.y[4], m.x, m.c.y[5]],
         )
         MockConfig.file_determinism = FileDeterminism.SORT_INDICES
         self.assertEqual(
@@ -499,7 +498,7 @@ class TestRepnUtils(unittest.TestCase):
         MockConfig.file_determinism = FileDeterminism.ORDERED
         self.assertEqual(
             list(initialize_var_map_from_column_order(m, MockConfig, {}).values()),
-            [m.b.y[7], m.b.y[6], m.y[3], m.y[2], m.c.y[4], m.x],
+            [m.b.y[7], m.b.y[6], m.y[3], m.y[2], m.c.y[4], m.x, m.c.y[5]],
         )
         # verify no side effects
         self.assertEqual(MockConfig.column_order, ref)
@@ -519,7 +518,7 @@ class TestRepnUtils(unittest.TestCase):
         self.assertEqual(MockConfig.column_order, ref)
 
     def test_ordered_active_constraints(self):
-        class MockConfig(object):
+        class MockConfig:
             row_order = None
             file_determinism = FileDeterminism(0)
 
@@ -671,16 +670,6 @@ class TestRepnUtils(unittest.TestCase):
         self.assertEqual(len(end), 4)
         self.assertIn(NPV_ProductExpression, end)
 
-        class NewProductExpression(ProductExpression):
-            pass
-
-        node = NewProductExpression((6, 7))
-        with self.assertRaisesRegex(
-            DeveloperError, r".*Unexpected expression node type 'NewProductExpression'"
-        ):
-            end[node.__class__](None, node, *node.args)
-        self.assertEqual(len(end), 4)
-
         end[SumExpression, 2] = lambda v, n, *d: 2 * sum(d)
         self.assertEqual(len(end), 5)
 
@@ -708,7 +697,33 @@ class TestRepnUtils(unittest.TestCase):
 
         self.assertEqual(end[node.__class__, 3, 4, 5, 6](None, node, *node.args), 6)
         self.assertEqual(len(end), 7)
+        # We don't cache etypes with more than 3 arguments
         self.assertNotIn((SumExpression, 3, 4, 5, 6), end)
+
+        class NewProductExpression(ProductExpression):
+            pass
+
+        node = NewProductExpression((6, 7))
+        self.assertEqual(end[node.__class__](None, node, *node.args), 42)
+        self.assertEqual(len(end), 8)
+        self.assertIn(NewProductExpression, end)
+
+        class UnknownExpression(NumericExpression):
+            pass
+
+        node = UnknownExpression((6, 7))
+        with self.assertRaisesRegex(
+            DeveloperError, r".*Unexpected expression node type 'UnknownExpression'"
+        ):
+            end[node.__class__](None, node, *node.args)
+        self.assertEqual(len(end), 8)
+
+        node = UnknownExpression((6, 7))
+        with self.assertRaisesRegex(
+            DeveloperError, r".*Unexpected expression node type 'UnknownExpression'"
+        ):
+            end[node.__class__, 6, 7](None, node, *node.args)
+        self.assertEqual(len(end), 8)
 
     def test_BeforeChildDispatcher_registration(self):
         class BeforeChildDispatcherTester(BeforeChildDispatcher):
@@ -720,8 +735,8 @@ class TestRepnUtils(unittest.TestCase):
             def _before_named_expression(visitor, child):
                 return child
 
-        class VisitorTester(object):
-            def handle_constant(self, value, node):
+        class VisitorTester:
+            def check_constant(self, value, node):
                 return value
 
             def evaluate(self, node):
@@ -734,15 +749,14 @@ class TestRepnUtils(unittest.TestCase):
 
         node = 5
         self.assertEqual(bcd[node.__class__](None, node), (False, (_CONSTANT, 5)))
-        self.assertIs(bcd[int], bcd._before_native)
+        self.assertIs(bcd[int], bcd._before_native_numeric)
         self.assertEqual(len(bcd), 1)
 
         node = 'string'
         ans = bcd[node.__class__](None, node)
         self.assertEqual(ans, (False, (_CONSTANT, InvalidNumber(node))))
         self.assertEqual(
-            ''.join(ans[1][1].causes),
-            "'string' (<class 'str'>) is not a valid numeric type",
+            ''.join(ans[1][1].causes), "'string' (str) is not a valid numeric type"
         )
         self.assertIs(bcd[str], bcd._before_string)
         self.assertEqual(len(bcd), 2)
@@ -751,10 +765,9 @@ class TestRepnUtils(unittest.TestCase):
         ans = bcd[node.__class__](None, node)
         self.assertEqual(ans, (False, (_CONSTANT, InvalidNumber(node))))
         self.assertEqual(
-            ''.join(ans[1][1].causes),
-            "True (<class 'bool'>) is not a valid numeric type",
+            ''.join(ans[1][1].causes), "True (bool) is not a valid numeric type"
         )
-        self.assertIs(bcd[bool], bcd._before_invalid)
+        self.assertIs(bcd[bool], bcd._before_native_logical)
         self.assertEqual(len(bcd), 3)
 
         node = 1j
@@ -771,14 +784,14 @@ class TestRepnUtils(unittest.TestCase):
 
         node = new_int(5)
         self.assertEqual(bcd[node.__class__](None, node), (False, (_CONSTANT, 5)))
-        self.assertIs(bcd[new_int], bcd._before_native)
+        self.assertIs(bcd[new_int], bcd._before_native_numeric)
         self.assertEqual(len(bcd), 5)
 
         node = []
         ans = bcd[node.__class__](None, node)
         self.assertEqual(ans, (False, (_CONSTANT, InvalidNumber([]))))
         self.assertEqual(
-            ''.join(ans[1][1].causes), "[] (<class 'list'>) is not a valid numeric type"
+            ''.join(ans[1][1].causes), "[] (list) is not a valid numeric type"
         )
         self.assertIs(bcd[list], bcd._before_invalid)
         self.assertEqual(len(bcd), 6)

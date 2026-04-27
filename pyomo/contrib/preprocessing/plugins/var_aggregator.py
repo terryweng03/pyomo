@@ -1,20 +1,23 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """Transformation to aggregate equal variables."""
 
-from __future__ import division
-
 from pyomo.common.collections import ComponentMap, ComponentSet
-from pyomo.core.base import Block, Constraint, VarList, Objective, TransformationFactory
+from pyomo.core.base import (
+    Block,
+    Constraint,
+    VarList,
+    Objective,
+    Reals,
+    TransformationFactory,
+)
 from pyomo.core.expr import ExpressionReplacementVisitor
 from pyomo.core.expr.numvalue import value
 from pyomo.core.plugins.transform.hierarchy import IsomorphicTransformation
@@ -187,25 +190,26 @@ def max_if_not_None(iterable):
     doc="Aggregate model variables that are linked by equality constraints.",
 )
 class VariableAggregator(IsomorphicTransformation):
-    """Aggregate model variables that are linked by equality constraints.
+    r"""Aggregate model variables that are linked by equality constraints.
 
     Before:
 
     .. math::
-
-        x &= y \\\\
-        a &= 2x + 6y + 7 \\\\
-        b &= 5y + 6 \\\\
+        x = y \\
+        a = 2x + 6y + 7 \\
+        b = 5y + 6 \\
 
     After:
 
     .. math::
+        z = x = y \\
+        a = 8z + 7 \\
+        b = 5z + 6
 
-        z &= x = y \\\\
-        a &= 8z + 7 \\\\
-        b &= 5z + 6
+    .. warning::
 
-    .. warning:: TODO: unclear what happens to "capital-E" Expressions at this point in time.
+       TODO: unclear what happens to "capital-E" Expressions at this
+       point in time.
 
     """
 
@@ -249,6 +253,12 @@ class VariableAggregator(IsomorphicTransformation):
             # the variables in its equality set.
             z_agg.setlb(max_if_not_None(v.lb for v in eq_set if v.has_lb()))
             z_agg.setub(min_if_not_None(v.ub for v in eq_set if v.has_ub()))
+            # Set the domain of the aggregate variable to the intersection of
+            # the domains of the variables in its equality set
+            domain = Reals
+            for v in eq_set:
+                domain = domain & v.domain
+            z_agg.domain = domain
 
             # Set the fixed status of the aggregate var
             fixed_vars = [v for v in eq_set if v.fixed]

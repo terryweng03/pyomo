@@ -1,7 +1,15 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 from pyomo.core.expr import identify_variables, value, differentiate
 import logging
 import math
-
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +40,7 @@ def taylor_series_expansion(
         The method for differentiation.
     order: The order of the taylor series expansion
         If order is not 1, then symbolic differentiation must
-        be used (differentiation.Modes.reverse_sybolic or
+        be used (differentiation.Modes.reverse_symbolic or
         differentiation.Modes.sympy).
 
     Returns

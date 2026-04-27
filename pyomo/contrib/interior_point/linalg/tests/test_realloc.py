@@ -1,3 +1,12 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 import pyomo.common.unittest as unittest
 from pyomo.common.dependencies import attempt_import
 
@@ -43,6 +52,13 @@ class TestReallocation(unittest.TestCase):
         linear_solver.do_symbolic_factorization(matrix)
 
         predicted = linear_solver.get_infog(16)
+
+        # We predict that factorization will take 2 MB
+        self.assertEqual(predicted, 2)
+
+        # Explicitly set maximum memory to less than the predicted
+        # requirement.
+        linear_solver.set_icntl(23, 1)
 
         res = linear_solver.do_numeric_factorization(matrix, raise_on_error=False)
         self.assertEqual(res.status, LinearSolverStatus.not_enough_memory)

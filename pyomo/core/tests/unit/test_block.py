@@ -1,19 +1,19 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
 # Unit Tests for Elements of a Block
 #
 
 from io import StringIO
+import logging
 import os
+import pickle
 import sys
 import types
 import json
@@ -49,12 +49,13 @@ from pyomo.environ import (
     ComponentUID,
     Any,
 )
+from pyomo.common.collections import ComponentSet
 from pyomo.common.log import LoggingIntercept
 from pyomo.common.tempfiles import TempfileManager
 from pyomo.core.base.block import (
     ScalarBlock,
     SubclassOf,
-    _BlockData,
+    BlockData,
     declare_custom_block,
 )
 import pyomo.core.expr as EXPR
@@ -76,6 +77,16 @@ class DerivedBlock(ScalarBlock):
 
 
 DerivedBlock._Block_reserved_words = set(dir(DerivedBlock()))
+
+
+@declare_custom_block("FooBlock", rule="build")
+class FooBlockData(BlockData):
+    def build(self, *args, capex, opex):
+        self.x = Var(list(args))
+        self.y = Var()
+
+        self.capex = capex
+        self.opex = opex
 
 
 class TestGenerators(unittest.TestCase):
@@ -472,7 +483,7 @@ class TestGenerators(unittest.TestCase):
             self.assertIs(a, b)
 
 
-class HierarchicalModel(object):
+class HierarchicalModel:
     def __init__(self):
         m = self.model = ConcreteModel()
         m.a1_IDX = Set(initialize=[5, 4], ordered=True)
@@ -669,7 +680,7 @@ class HierarchicalModel(object):
         ]
 
 
-class MixedHierarchicalModel(object):
+class MixedHierarchicalModel:
     def __init__(self):
         m = self.model = ConcreteModel()
         m.a = Block()
@@ -851,7 +862,7 @@ class TestBlock(unittest.TestCase):
             _Block_reserved_words = None
 
         DerivedBlock._Block_reserved_words = (
-            set(['a', 'b', 'c']) | _BlockData._Block_reserved_words
+            set(['a', 'b', 'c']) | BlockData._Block_reserved_words
         )
 
         m = ConcreteModel()
@@ -965,7 +976,7 @@ class TestBlock(unittest.TestCase):
         b.c.d.e = Block()
         with self.assertRaisesRegex(
             ValueError,
-            r'_BlockData.transfer_attributes_from\(\): '
+            r'BlockData.transfer_attributes_from\(\): '
             r'Cannot set a sub-block \(c.d.e\) to a parent block \(c\):',
         ):
             b.c.d.e.transfer_attributes_from(b.c)
@@ -974,7 +985,7 @@ class TestBlock(unittest.TestCase):
         b = Block(concrete=True)
         with self.assertRaisesRegex(
             ValueError,
-            r'_BlockData.transfer_attributes_from\(\): expected a Block '
+            r'BlockData.transfer_attributes_from\(\): expected a Block '
             'or dict; received str',
         ):
             b.transfer_attributes_from('foo')
@@ -1343,6 +1354,37 @@ class TestBlock(unittest.TestCase):
         self.assertFalse(m.contains_component(Var))
         self.assertFalse('x' in m.__dict__)
         self.assertIs(m.component('x'), None)
+
+    def test_del_component_data(self):
+        m = ConcreteModel()
+        self.assertFalse(m.contains_component(Var))
+        x = m.x = Var([1, 2, 3])
+        self.assertTrue(m.contains_component(Var))
+        self.assertIs(m.component('x'), x)
+        del m.x[1]
+        self.assertTrue(m.contains_component(Var))
+        self.assertTrue('x' in m.__dict__)
+        self.assertEqual(len(m.x), 2)
+        self.assertIn(m.x[2], ComponentSet(m.x.values()))
+        self.assertIn(m.x[3], ComponentSet(m.x.values()))
+
+        # This fails:
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Argument 'x\[2\]' to del_component is a ComponentData object. "
+            r"Please use the Python 'del' function to delete members of "
+            r"indexed Pyomo components. The del_component function can "
+            r"only be used to delete IndexedComponents and "
+            r"ScalarComponents.",
+        ):
+            m.del_component(m.x[2])
+
+        # But we can use del
+        del m.x[2]
+        self.assertTrue(m.contains_component(Var))
+        self.assertTrue('x' in m.__dict__)
+        self.assertEqual(len(m.x), 1)
+        self.assertIn(m.x[3], ComponentSet(m.x.values()))
 
     def test_reclassify_component(self):
         m = Block()
@@ -2500,7 +2542,7 @@ class TestBlock(unittest.TestCase):
             self.assertIs(m.d[i].parent_block(), m)
 
     def test_clone_unclonable_attribute(self):
-        class foo(object):
+        class foo:
             def __deepcopy__(bogus):
                 pass
 
@@ -2524,7 +2566,7 @@ class TestBlock(unittest.TestCase):
             "'unknown' contains an uncopyable field 'bad1'", OUTPUT.getvalue()
         )
         self.assertIn("'b' contains an uncopyable field 'bad2'", OUTPUT.getvalue())
-        self.assertIn("'__paranoid__'", OUTPUT.getvalue())
+        self.assertIn("outside the scope of Block.clone()", OUTPUT.getvalue())
         self.assertTrue(hasattr(m.b, 'bad2'))
         self.assertIsNotNone(m.b.bad2)
         self.assertTrue(hasattr(nb, 'bad2'))
@@ -2626,19 +2668,16 @@ class TestBlock(unittest.TestCase):
         m = HierarchicalModel().model
         buf = StringIO()
         m.pprint(ostream=buf)
-        ref = """3 Set Declarations
+        ref = """2 Set Declarations
     a1_IDX : Size=1, Index=None, Ordered=Insertion
         Key  : Dimen : Domain : Size : Members
         None :     1 :    Any :    2 : {5, 4}
     a3_IDX : Size=1, Index=None, Ordered=Insertion
         Key  : Dimen : Domain : Size : Members
         None :     1 :    Any :    2 : {6, 7}
-    a_index : Size=1, Index=None, Ordered=Insertion
-        Key  : Dimen : Domain : Size : Members
-        None :     1 :    Any :    3 : {1, 2, 3}
 
 3 Block Declarations
-    a : Size=3, Index=a_index, Active=True
+    a : Size=3, Index={1, 2, 3}, Active=True
         a[1] : Active=True
             2 Block Declarations
                 c : Size=2, Index=a1_IDX, Active=True
@@ -2668,10 +2707,115 @@ class TestBlock(unittest.TestCase):
     c : Size=1, Index=None, Active=True
         0 Declarations: 
 
-6 Declarations: a1_IDX a3_IDX c a_index a b
+5 Declarations: a1_IDX a3_IDX c a b
 """
-        print(buf.getvalue())
         self.assertEqual(ref, buf.getvalue())
+
+    def test_pprint_sorting(self):
+        m = ConcreteModel()
+        m.I = Set(ordered=False, initialize=[3, 'a', 1])
+        m.y = Var(m.I)
+        m.x = Var([3, 2, 1])
+
+        OUT = StringIO()
+        m.pprint(ostream=OUT, sort=False)
+        self.assertEqual(
+            """1 Set Declarations
+    I : Size=1, Index=None, Ordered=False
+        Key  : Dimen : Domain : Size : Members
+        None :     1 :    Any :    3 : {%s, %s, %s}
+
+2 Var Declarations
+    y : Size=3, Index=I
+        Key : Lower : Value : Upper : Fixed : Stale : Domain
+          %s :  None :  None :  None : False :  True :  Reals
+          %s :  None :  None :  None : False :  True :  Reals
+          %s :  None :  None :  None : False :  True :  Reals
+    x : Size=3, Index={3, 2, 1}
+        Key : Lower : Value : Upper : Fixed : Stale : Domain
+          3 :  None :  None :  None : False :  True :  Reals
+          2 :  None :  None :  None : False :  True :  Reals
+          1 :  None :  None :  None : False :  True :  Reals
+
+3 Declarations: I y x
+""" % (tuple(repr(_) for _ in m.I.ordered_iter()) + tuple(m.I)),
+            OUT.getvalue(),
+        )
+
+        OUT = StringIO()
+        m.pprint(ostream=OUT, sort=SortComponents.ALPHABETICAL)
+        self.assertEqual(
+            """1 Set Declarations
+    I : Size=1, Index=None, Ordered=False
+        Key  : Dimen : Domain : Size : Members
+        None :     1 :    Any :    3 : {%s, %s, %s}
+
+2 Var Declarations
+    x : Size=3, Index={3, 2, 1}
+        Key : Lower : Value : Upper : Fixed : Stale : Domain
+          3 :  None :  None :  None : False :  True :  Reals
+          2 :  None :  None :  None : False :  True :  Reals
+          1 :  None :  None :  None : False :  True :  Reals
+    y : Size=3, Index=I
+        Key : Lower : Value : Upper : Fixed : Stale : Domain
+          %s :  None :  None :  None : False :  True :  Reals
+          %s :  None :  None :  None : False :  True :  Reals
+          %s :  None :  None :  None : False :  True :  Reals
+
+3 Declarations: I y x
+""" % (tuple(repr(_) for _ in m.I.ordered_iter()) + tuple(m.I)),
+            OUT.getvalue(),
+        )
+
+        OUT = StringIO()
+        m.pprint(ostream=OUT, sort=SortComponents.ORDERED_INDICES)
+        self.assertEqual(
+            """1 Set Declarations
+    I : Size=1, Index=None, Ordered=False
+        Key  : Dimen : Domain : Size : Members
+        None :     1 :    Any :    3 : {%s, %s, %s}
+
+2 Var Declarations
+    y : Size=3, Index=I
+        Key : Lower : Value : Upper : Fixed : Stale : Domain
+          1 :  None :  None :  None : False :  True :  Reals
+          3 :  None :  None :  None : False :  True :  Reals
+          a :  None :  None :  None : False :  True :  Reals
+    x : Size=3, Index={3, 2, 1}
+        Key : Lower : Value : Upper : Fixed : Stale : Domain
+          3 :  None :  None :  None : False :  True :  Reals
+          2 :  None :  None :  None : False :  True :  Reals
+          1 :  None :  None :  None : False :  True :  Reals
+
+3 Declarations: I y x
+""" % tuple(repr(_) for _ in m.I.ordered_iter()),
+            OUT.getvalue(),
+        )
+
+        OUT = StringIO()
+        m.pprint(ostream=OUT, sort=True)
+        self.assertEqual(
+            """1 Set Declarations
+    I : Size=1, Index=None, Ordered=False
+        Key  : Dimen : Domain : Size : Members
+        None :     1 :    Any :    3 : {%s, %s, %s}
+
+2 Var Declarations
+    x : Size=3, Index={3, 2, 1}
+        Key : Lower : Value : Upper : Fixed : Stale : Domain
+          1 :  None :  None :  None : False :  True :  Reals
+          2 :  None :  None :  None : False :  True :  Reals
+          3 :  None :  None :  None : False :  True :  Reals
+    y : Size=3, Index=I
+        Key : Lower : Value : Upper : Fixed : Stale : Domain
+          1 :  None :  None :  None : False :  True :  Reals
+          3 :  None :  None :  None : False :  True :  Reals
+          a :  None :  None :  None : False :  True :  Reals
+
+3 Declarations: I y x
+""" % tuple(repr(_) for _ in m.I.ordered_iter()),
+            OUT.getvalue(),
+        )
 
     @unittest.skipIf(not 'glpk' in solvers, "glpk solver is not available")
     def test_solve1(self):
@@ -2695,9 +2839,10 @@ class TestBlock(unittest.TestCase):
         results = opt.solve(model, symbolic_solver_labels=True)
         model.solutions.store_to(results)
         results.write(filename=join(currdir, "solve1.out"), format='json')
-        with open(join(currdir, "solve1.out"), 'r') as out, open(
-            join(currdir, "solve1.txt"), 'r'
-        ) as txt:
+        with (
+            open(join(currdir, "solve1.out"), 'r') as out,
+            open(join(currdir, "solve1.txt"), 'r') as txt,
+        ):
             self.assertStructuredAlmostEqual(
                 json.load(txt), json.load(out), abstol=1e-4, allow_second_superset=True
             )
@@ -2711,9 +2856,10 @@ class TestBlock(unittest.TestCase):
         results = opt.solve(model)
         model.solutions.store_to(results)
         results.write(filename=join(currdir, "solve1x.out"), format='json')
-        with open(join(currdir, "solve1x.out"), 'r') as out, open(
-            join(currdir, "solve1.txt"), 'r'
-        ) as txt:
+        with (
+            open(join(currdir, "solve1x.out"), 'r') as out,
+            open(join(currdir, "solve1.txt"), 'r') as txt,
+        ):
             self.assertStructuredAlmostEqual(
                 json.load(txt), json.load(out), abstol=1e-4, allow_second_superset=True
             )
@@ -2722,9 +2868,10 @@ class TestBlock(unittest.TestCase):
         results = opt.solve(model)
         model.solutions.store_to(results)
         results.write(filename=join(currdir, "solve1a.out"), format='json')
-        with open(join(currdir, "solve1a.out"), 'r') as out, open(
-            join(currdir, "solve1a.txt"), 'r'
-        ) as txt:
+        with (
+            open(join(currdir, "solve1a.out"), 'r') as out,
+            open(join(currdir, "solve1a.txt"), 'r') as txt,
+        ):
             self.assertStructuredAlmostEqual(
                 json.load(txt), json.load(out), abstol=1e-4, allow_second_superset=True
             )
@@ -2740,9 +2887,10 @@ class TestBlock(unittest.TestCase):
         results = opt.solve(model)
         model.solutions.store_to(results)
         results.write(filename=join(currdir, "solve1y.out"), format='json')
-        with open(join(currdir, "solve1y.out"), 'r') as out, open(
-            join(currdir, "solve1.txt"), 'r'
-        ) as txt:
+        with (
+            open(join(currdir, "solve1y.out"), 'r') as out,
+            open(join(currdir, "solve1.txt"), 'r') as txt,
+        ):
             self.assertStructuredAlmostEqual(
                 json.load(txt), json.load(out), abstol=1e-4, allow_second_superset=True
             )
@@ -2751,9 +2899,10 @@ class TestBlock(unittest.TestCase):
         results = opt.solve(model)
         model.solutions.store_to(results)
         results.write(filename=join(currdir, "solve1b.out"), format='json')
-        with open(join(currdir, "solve1b.out"), 'r') as out, open(
-            join(currdir, "solve1b.txt"), 'r'
-        ) as txt:
+        with (
+            open(join(currdir, "solve1b.out"), 'r') as out,
+            open(join(currdir, "solve1b.txt"), 'r') as txt,
+        ):
             self.assertStructuredAlmostEqual(
                 json.load(txt), json.load(out), abstol=1e-4, allow_second_superset=True
             )
@@ -2780,9 +2929,10 @@ class TestBlock(unittest.TestCase):
         results = opt.solve(model, symbolic_solver_labels=True)
         model.solutions.store_to(results)
         results.write(filename=join(currdir, 'solve4.out'), format='json')
-        with open(join(currdir, "solve4.out"), 'r') as out, open(
-            join(currdir, "solve1.txt"), 'r'
-        ) as txt:
+        with (
+            open(join(currdir, "solve4.out"), 'r') as out,
+            open(join(currdir, "solve1.txt"), 'r') as txt,
+        ):
             self.assertStructuredAlmostEqual(
                 json.load(txt), json.load(out), abstol=1e-4, allow_second_superset=True
             )
@@ -2816,9 +2966,10 @@ class TestBlock(unittest.TestCase):
         results = opt.solve(model, symbolic_solver_labels=True)
         model.solutions.store_to(results)
         results.write(filename=join(currdir, 'solve6.out'), format='json')
-        with open(join(currdir, "solve6.out"), 'r') as out, open(
-            join(currdir, "solve6.txt"), 'r'
-        ) as txt:
+        with (
+            open(join(currdir, "solve6.out"), 'r') as out,
+            open(join(currdir, "solve6.txt"), 'r') as txt,
+        ):
             self.assertStructuredAlmostEqual(
                 json.load(txt), json.load(out), abstol=1e-4, allow_second_superset=True
             )
@@ -2853,9 +3004,10 @@ class TestBlock(unittest.TestCase):
         # model.display()
         model.solutions.store_to(results)
         results.write(filename=join(currdir, 'solve7.out'), format='json')
-        with open(join(currdir, "solve7.out"), 'r') as out, open(
-            join(currdir, "solve7.txt"), 'r'
-        ) as txt:
+        with (
+            open(join(currdir, "solve7.out"), 'r') as out,
+            open(join(currdir, "solve7.txt"), 'r') as txt,
+        ):
             self.assertStructuredAlmostEqual(
                 json.load(txt), json.load(out), abstol=1e-4, allow_second_superset=True
             )
@@ -2979,9 +3131,70 @@ class TestBlock(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, ".*Cannot write model in format"):
             m.write(format="bogus")
 
-    def test_override_pprint(self):
+    def test_custom_block(self):
+        @declare_custom_block('TestingBlock')
+        class TestingBlockData(BlockData):
+            def __init__(self, component):
+                BlockData.__init__(self, component)
+                logging.getLogger(__name__).warning("TestingBlockData.__init__")
+
+        self.assertIn('TestingBlock', globals())
+        self.assertIn('ScalarTestingBlock', globals())
+        self.assertIn('IndexedTestingBlock', globals())
+        self.assertIs(TestingBlock.__module__, __name__)
+        self.assertIs(ScalarTestingBlock.__module__, __name__)
+        self.assertIs(IndexedTestingBlock.__module__, __name__)
+
+        with LoggingIntercept() as LOG:
+            obj = TestingBlock()
+        self.assertIs(type(obj), ScalarTestingBlock)
+        self.assertEqual(LOG.getvalue().strip(), "TestingBlockData.__init__")
+
+        with LoggingIntercept() as LOG:
+            obj = TestingBlock([1, 2])
+        self.assertIs(type(obj), IndexedTestingBlock)
+        self.assertEqual(LOG.getvalue(), "")
+
+        # Test that we can derive from a ScalarCustomBlock
+        class DerivedScalarTestingBlock(ScalarTestingBlock):
+            pass
+
+        with LoggingIntercept() as LOG:
+            obj = DerivedScalarTestingBlock()
+        self.assertIs(type(obj), DerivedScalarTestingBlock)
+        self.assertEqual(LOG.getvalue().strip(), "TestingBlockData.__init__")
+
+    def test_custom_block_ctypes(self):
+        @declare_custom_block('TestingBlock')
+        class TestingBlockData(BlockData):
+            pass
+
+        self.assertIs(TestingBlock().ctype, Block)
+
+        @declare_custom_block('TestingBlock', True)
+        class TestingBlockData(BlockData):
+            pass
+
+        self.assertIs(TestingBlock().ctype, TestingBlock)
+
+        @declare_custom_block('TestingBlock', Constraint)
+        class TestingBlockData(BlockData):
+            pass
+
+        self.assertIs(TestingBlock().ctype, Constraint)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Expected new_ctype to be either type or 'True'; received: \[\]",
+        ):
+
+            @declare_custom_block('TestingBlock', [])
+            class TestingBlockData(BlockData):
+                pass
+
+    def test_custom_block_override_pprint(self):
         @declare_custom_block('TempBlock')
-        class TempBlockData(_BlockData):
+        class TempBlockData(BlockData):
             def pprint(self, ostream=None, verbose=False, prefix=""):
                 ostream.write('Testing pprint of a custom block.')
 
@@ -2990,6 +3203,82 @@ class TestBlock(unittest.TestCase):
         stream = StringIO()
         b.pprint(ostream=stream)
         self.assertEqual(correct_s, stream.getvalue())
+
+    def test_custom_block_default_rule(self):
+        """Tests the decorator with `build` method, but without options"""
+
+        @declare_custom_block("LocalFooBlock", rule="build")
+        class LocalFooBlockData(BlockData):
+            def build(self, *args):
+                self.x = Var(list(args))
+                self.y = Var()
+
+        m = ConcreteModel()
+        m.blk_without_index = LocalFooBlock()
+        m.blk_1 = LocalFooBlock([1, 2, 3])
+        m.blk_2 = LocalFooBlock([4, 5], [6, 7])
+
+        self.assertIn("x", m.blk_without_index.component_map())
+        self.assertIn("y", m.blk_without_index.component_map())
+        self.assertIn("x", m.blk_1[3].component_map())
+        self.assertIn("x", m.blk_2[4, 6].component_map())
+
+        self.assertEqual(len(m.blk_1), 3)
+        self.assertEqual(len(m.blk_2), 4)
+
+        self.assertEqual(len(m.blk_1[2].x), 1)
+        self.assertEqual(len(m.blk_2[4, 6].x), 2)
+
+    def test_custom_block_default_rule_options(self):
+        """Tests the decorator with `build` method and model options"""
+
+        options = {"capex": 42, "opex": 24}
+        m = ConcreteModel()
+        m.blk_without_index = FooBlock(capex=42, opex=24)
+        m.blk_1 = FooBlock([1, 2, 3], **options)
+        m.blk_2 = FooBlock([4, 5], [6, 7], **options)
+
+        self.assertEqual(m.blk_without_index.capex, 42)
+        self.assertEqual(m.blk_without_index.opex, 24)
+
+        self.assertEqual(m.blk_1[3].capex, 42)
+        self.assertEqual(m.blk_2[4, 7].opex, 24)
+
+        new_m = pickle.loads(pickle.dumps(m))
+        self.assertIs(new_m.blk_without_index.__class__, m.blk_without_index.__class__)
+        self.assertIs(new_m.blk_1.__class__, m.blk_1.__class__)
+        self.assertIs(new_m.blk_2.__class__, m.blk_2.__class__)
+
+        self.assertIsNot(new_m.blk_without_index, m.blk_without_index)
+        self.assertIsNot(new_m.blk_1, m.blk_1)
+        self.assertIsNot(new_m.blk_2, m.blk_2)
+
+        with self.assertRaisesRegex(
+            TypeError, "missing 2 required keyword-only arguments"
+        ):
+            # missing 2 required keyword arguments
+            m.blk_3 = FooBlock()
+
+    def test_custom_block_user_rule(self):
+        """Tests if the default rule can be overwritten"""
+
+        @declare_custom_block("FooBlock")
+        class FooBlockData(BlockData):
+            def build(self, *args):
+                self.x = Var(list(args))
+                self.y = Var()
+
+        def _new_rule(blk):
+            blk.a = Var()
+            blk.b = Var()
+
+        m = ConcreteModel()
+        m.blk = FooBlock(rule=_new_rule)
+
+        self.assertNotIn("x", m.blk.component_map())
+        self.assertNotIn("y", m.blk.component_map())
+        self.assertIn("a", m.blk.component_map())
+        self.assertIn("b", m.blk.component_map())
 
     def test_block_rules(self):
         m = ConcreteModel()
@@ -3056,9 +3345,9 @@ class TestBlock(unittest.TestCase):
         class ConcreteBlock(Block):
             pass
 
-        class ScalarConcreteBlock(_BlockData, ConcreteBlock):
+        class ScalarConcreteBlock(BlockData, ConcreteBlock):
             def __init__(self, *args, **kwds):
-                _BlockData.__init__(self, component=self)
+                BlockData.__init__(self, component=self)
                 ConcreteBlock.__init__(self, *args, **kwds)
 
         _buf = []
@@ -3406,6 +3695,97 @@ class TestBlock(unittest.TestCase):
                 (('A', (0, 3)), m.c[2].A[0, 3]),
             ],
         )
+
+    def test_private_data(self):
+        m = ConcreteModel()
+        m.b = Block()
+        m.b.b = Block([1, 2])
+
+        mfe = m.private_data()
+        self.assertIsInstance(mfe, dict)
+        self.assertEqual(len(mfe), 0)
+        self.assertEqual(len(m._private_data), 1)
+        self.assertIn('pyomo.core.tests.unit.test_block', m._private_data)
+        self.assertIs(mfe, m._private_data['pyomo.core.tests.unit.test_block'])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "All keys in the 'private_data' dictionary must "
+            "be substrings of the caller's module name. "
+            "Received 'no mice here' when calling private_data on Block "
+            "'b'.",
+        ):
+            mfe2 = m.b.private_data('no mice here')
+
+        mfe3 = m.b.b[1].private_data('pyomo.core.tests')
+        self.assertIsInstance(mfe3, dict)
+        self.assertEqual(len(mfe3), 0)
+        self.assertIsInstance(m.b.b[1]._private_data, dict)
+        self.assertEqual(len(m.b.b[1]._private_data), 1)
+        self.assertIn('pyomo.core.tests', m.b.b[1]._private_data)
+        self.assertIs(mfe3, m.b.b[1]._private_data['pyomo.core.tests'])
+        mfe3['there are cookies'] = 'but no mice'
+
+        mfe4 = m.b.b[1].private_data('pyomo.core.tests')
+        self.assertIs(mfe4, mfe3)
+
+    def test_register_private_data(self):
+        _save = Block._private_data_initializers
+
+        Block._private_data_initializers = pdi = _save.copy()
+        pdi.clear()
+        try:
+            self.assertEqual(len(pdi), 0)
+            b = Block(concrete=True)
+            ps = b.private_data()
+            self.assertEqual(ps, {})
+            self.assertEqual(len(pdi), 1)
+        finally:
+            Block._private_data_initializers = _save
+
+        def init():
+            return {'a': None, 'b': 1}
+
+        Block._private_data_initializers = pdi = _save.copy()
+        pdi.clear()
+        try:
+            self.assertEqual(len(pdi), 0)
+            Block.register_private_data_initializer(init)
+            self.assertEqual(len(pdi), 1)
+
+            b = Block(concrete=True)
+            ps = b.private_data()
+            self.assertEqual(ps, {'a': None, 'b': 1})
+            self.assertEqual(len(pdi), 1)
+        finally:
+            Block._private_data_initializers = _save
+
+        Block._private_data_initializers = pdi = _save.copy()
+        pdi.clear()
+        try:
+            Block.register_private_data_initializer(init)
+            self.assertEqual(len(pdi), 1)
+            Block.register_private_data_initializer(init, 'pyomo')
+            self.assertEqual(len(pdi), 2)
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"Duplicate initializer registration for 'private_data' "
+                r"dictionary \(scope=pyomo.core.tests.unit.test_block\)",
+            ):
+                Block.register_private_data_initializer(init)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"'private_data' scope must be substrings of the caller's "
+                r"module name. Received 'invalid' when calling "
+                r"register_private_data_initializer\(\).",
+            ):
+                Block.register_private_data_initializer(init, 'invalid')
+
+            self.assertEqual(len(pdi), 2)
+        finally:
+            Block._private_data_initializers = _save
 
 
 if __name__ == "__main__":

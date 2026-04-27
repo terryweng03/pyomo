@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.common import DeveloperError
 from pyomo.common.collections import (
@@ -18,7 +16,7 @@ from pyomo.common.collections import (
     Sequence,
 )
 from pyomo.common.modeling import NOTSET
-from pyomo.core.base.set import DeclareGlobalSet, Set, SetOf, OrderedSetOf, _SetDataBase
+from pyomo.core.base.set import DeclareGlobalSet, Set, SetOf, OrderedSetOf, SetData
 from pyomo.core.base.component import Component, ComponentData
 from pyomo.core.base.global_set import UnindexedComponent_set
 from pyomo.core.base.enums import SortComponents
@@ -44,7 +42,7 @@ DeclareGlobalSet(
 )
 
 
-class _fill_in_known_wildcards(object):
+class _fill_in_known_wildcards:
     """Variant of "six.advance_iterator" that substitutes wildcard values
 
     This object is initialized with a tuple of index values.  Calling
@@ -579,10 +577,10 @@ def Reference(reference, ctype=NOTSET):
     :py:class:`IndexedComponent`.
 
     If the indices associated with wildcards in the component slice all
-    refer to the same :py:class:`Set` objects for all data identifed by
+    refer to the same :py:class:`Set` objects for all data identified by
     the slice, then the resulting indexed component will be indexed by
     the product of those sets.  However, if all data do not share common
-    set objects, or only a subset of indices in a multidimentional set
+    set objects, or only a subset of indices in a multidimensional set
     appear as wildcards, then the resulting indexed component will be
     indexed by a :py:class:`SetOf` containing a
     :py:class:`_ReferenceSet` for the slice.
@@ -612,7 +610,7 @@ def Reference(reference, ctype=NOTSET):
         ...
         >>> m.r1 = Reference(m.b[:,:].x)
         >>> m.r1.pprint()
-        r1 : Size=4, Index=r1_index, ReferenceTo=b[:, :].x
+        r1 : Size=4, Index={1, 2}*{3, 4}, ReferenceTo=b[:, :].x
             Key    : Lower : Value : Upper : Fixed : Stale : Domain
             (1, 3) :     1 :  None :     3 : False :  True :  Reals
             (1, 4) :     1 :  None :     4 : False :  True :  Reals
@@ -625,7 +623,7 @@ def Reference(reference, ctype=NOTSET):
 
         >>> m.r2 = Reference(m.b[:,3].x)
         >>> m.r2.pprint()
-        r2 : Size=2, Index=b_index_0, ReferenceTo=b[:, 3].x
+        r2 : Size=2, Index={1, 2}, ReferenceTo=b[:, 3].x
             Key : Lower : Value : Upper : Fixed : Stale : Domain
               1 :     1 :  None :     3 : False :  True :  Reals
               2 :     2 :  None :     3 : False :  True :  Reals
@@ -642,7 +640,7 @@ def Reference(reference, ctype=NOTSET):
         ...
         >>> m.r3 = Reference(m.b[:].x[:])
         >>> m.r3.pprint()
-        r3 : Size=4, Index=r3_index, ReferenceTo=b[:].x[:]
+        r3 : Size=4, Index=ReferenceSet(b[:].x[:]), ReferenceTo=b[:].x[:]
             Key    : Lower : Value : Upper : Fixed : Stale : Domain
             (1, 3) :     1 :  None :  None : False :  True :  Reals
             (1, 4) :     1 :  None :  None : False :  True :  Reals
@@ -657,7 +655,7 @@ def Reference(reference, ctype=NOTSET):
 
         >>> m.r3[1,4] = 10
         >>> m.b[1].x.pprint()
-        x : Size=2, Index=b[1].x_index
+        x : Size=2, Index={3, 4}
             Key : Lower : Value : Upper : Fixed : Stale : Domain
               3 :     1 :  None :  None : False :  True :  Reals
               4 :     1 :    10 :  None : False : False :  Reals
@@ -774,10 +772,10 @@ def Reference(reference, ctype=NOTSET):
             # is that within the subsets list, and set is a wildcard set.
             index = wildcards[0][1]
             # index is the first wildcard set.
-            if not isinstance(index, _SetDataBase):
+            if not isinstance(index, SetData):
                 index = SetOf(index)
             for lvl, idx in wildcards[1:]:
-                if not isinstance(idx, _SetDataBase):
+                if not isinstance(idx, SetData):
                     idx = SetOf(idx)
                 index = index * idx
             # index is now either a single Set, or a SetProduct of the

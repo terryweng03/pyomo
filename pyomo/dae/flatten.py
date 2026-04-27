@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 """A module for "flattening" the components in a block-hierarchical model
 with respect to common indexing sets
 
@@ -43,7 +41,7 @@ def get_slice_for_set(s):
         return None
 
 
-class _NotAnIndex(object):
+class _NotAnIndex:
     """
     `None` is a valid index, so we use a dummy class to
     denote a slot that needs to get filled with indices
@@ -200,8 +198,28 @@ def slice_component_along_sets(component, sets, context_slice=None, normalize=No
                     #
                     # Note that c_slice is not necessarily a slice.
                     # We enter this loop even if no sets need slicing.
-                    temp_slice = c_slice.duplicate()
-                    next(iter(temp_slice))
+                    try:
+                        next(iter(c_slice.duplicate()))
+                    except IndexError:
+                        if normalize_index.flatten:
+                            raise
+                        # There is an edge case where when we are not
+                        # flattening indices the dimensionality of an
+                        # index can change between a SetProduct and the
+                        # member Sets: the member set can have dimen>1
+                        # (or even None!), but the dimen of that portion
+                        # of the SetProduct is always 1.  Since we are
+                        # just checking that the c_slice isn't
+                        # completely empty, we will allow matching with
+                        # an Ellipsis
+                        _empty = True
+                        try:
+                            next(iter(base_component[...]))
+                            _empty = False
+                        except:
+                            pass
+                        if _empty:
+                            raise
                 if (normalize is None and normalize_index.flatten) or normalize:
                     # Most users probably want this index to be normalized,
                     # so they can more conveniently use it as a key in a
@@ -239,7 +257,7 @@ def generate_sliced_components(
     Parameters
     ----------
 
-    b: _BlockData
+    b: BlockData
         Block whose components will be sliced
 
     index_stack: list
@@ -247,7 +265,7 @@ def generate_sliced_components(
         component, that have been sliced. This is necessary to return the
         sets that have been sliced.
 
-    slice_: IndexedComponent_slice or _BlockData
+    slice_: IndexedComponent_slice or BlockData
         Slice generated so far.  This function will yield extensions to
         this slice at the current level of the block hierarchy.
 
@@ -423,7 +441,7 @@ def flatten_components_along_sets(m, sets, ctype, indices=None, active=None):
     Parameters
     ----------
 
-    m: _BlockData
+    m: BlockData
         Block whose components (and their sub-components) will be
         partitioned
 
@@ -526,7 +544,7 @@ def flatten_dae_components(model, time, ctype, indices=None, active=None):
     Parameters
     ----------
 
-    model: _BlockData
+    model: BlockData
         Block whose components are partitioned
 
     time: Set

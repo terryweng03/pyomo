@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import pyomo.common.unittest as unittest
 from pyomo.common.dependencies import numpy, numpy_available
@@ -16,7 +14,10 @@ from pyomo.common.log import LoggingIntercept
 # Boolean
 numpy_bool_names = []
 if numpy_available:
-    numpy_bool_names.append('bool_')
+    if numpy.__version__[0] == '2':
+        numpy_bool_names.append('bool')
+    else:
+        numpy_bool_names.append('bool_')
 # Integers
 numpy_int_names = []
 if numpy_available:
@@ -34,7 +35,8 @@ if numpy_available:
 # Reals
 numpy_float_names = []
 if numpy_available:
-    numpy_float_names.append('float_')
+    if hasattr(numpy, 'float_'):
+        numpy_float_names.append('float_')
     numpy_float_names.append('float16')
     numpy_float_names.append('float32')
     numpy_float_names.append('float64')
@@ -46,7 +48,8 @@ if numpy_available:
 # Complex
 numpy_complex_names = []
 if numpy_available:
-    numpy_complex_names.append('complex_')
+    if hasattr(numpy, 'complex_'):
+        numpy_complex_names.append('complex_')
     numpy_complex_names.append('complex64')
     numpy_complex_names.append('complex128')
     if hasattr(numpy, 'complex192'):

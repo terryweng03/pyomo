@@ -1,19 +1,18 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 """
-Semibatch model, based on Nicholson et al. (2018). pyomo.dae: A modeling and 
+Semibatch model, based on Nicholson et al. (2018). pyomo.dae: A modeling and
 automatic discretization framework for optimization with di
-erential and 
+erential and
 algebraic equations. Mathematical Programming Computation, 10(2), 187-223.
 """
+
 import json
 from os.path import join, abspath, dirname
 from pyomo.environ import (
@@ -29,16 +28,28 @@ from pyomo.environ import (
     SolverFactory,
     exp,
     minimize,
+    Suffix,
+    ComponentUID,
 )
 from pyomo.dae import ContinuousSet, DerivativeVar
+from pyomo.contrib.parmest.experiment import Experiment
 
 
 def generate_model(data):
+    # if data is a file name, then load file first
+    if isinstance(data, str):
+        file_name = data
+        try:
+            with open(file_name, "r") as infile:
+                data = json.load(infile)
+        except:
+            raise RuntimeError(f"Could not read {file_name} as json")
+
     # unpack and fix the data
-    cameastemp = data['Ca_meas']
-    cbmeastemp = data['Cb_meas']
-    ccmeastemp = data['Cc_meas']
-    trmeastemp = data['Tr_meas']
+    cameastemp = data["Ca_meas"]
+    cbmeastemp = data["Cb_meas"]
+    ccmeastemp = data["Cc_meas"]
+    trmeastemp = data["Tr_meas"]
 
     cameas = {}
     cbmeas = {}
@@ -79,9 +90,9 @@ def generate_model(data):
     m.Vc = Param(initialize=0.07)  # m^3
     m.rhow = Param(initialize=700.0)  # kg/m^3
     m.cpw = Param(initialize=3.1)  # kJ/kg/K
-    m.Ca0 = Param(initialize=data['Ca0'])  # kmol/m^3)
-    m.Cb0 = Param(initialize=data['Cb0'])  # kmol/m^3)
-    m.Cc0 = Param(initialize=data['Cc0'])  # kmol/m^3)
+    m.Ca0 = Param(initialize=data["Ca0"])  # kmol/m^3)
+    m.Cb0 = Param(initialize=data["Cb0"])  # kmol/m^3)
+    m.Cc0 = Param(initialize=data["Cc0"])  # kmol/m^3)
     m.Tr0 = Param(initialize=300.0)  # K
     m.Vr0 = Param(initialize=1.0)  # m^3
 
@@ -92,9 +103,9 @@ def generate_model(data):
     #
     def _initTc(m, t):
         if t < 10800:
-            return data['Tc1']
+            return data["Tc1"]
         else:
-            return data['Tc2']
+            return data["Tc2"]
 
     m.Tc = Param(
         m.time, initialize=_initTc, default=_initTc
@@ -102,9 +113,9 @@ def generate_model(data):
 
     def _initFa(m, t):
         if t < 10800:
-            return data['Fa1']
+            return data["Fa1"]
         else:
-            return data['Fa2']
+            return data["Fa2"]
 
     m.Fa = Param(
         m.time, initialize=_initFa, default=_initFa
@@ -230,7 +241,7 @@ def generate_model(data):
         )
 
     def MissingMeasurements(m):
-        if data['experiment'] == 1:
+        if data["experiment"] == 1:
             return sum(
                 (m.Ca[t] - m.Ca_meas[t]) ** 2
                 + (m.Cb[t] - m.Cb_meas[t]) ** 2
@@ -238,7 +249,7 @@ def generate_model(data):
                 + (m.Tr[t] - m.Tr_meas[t]) ** 2
                 for t in m.measT
             )
-        elif data['experiment'] == 2:
+        elif data["experiment"] == 2:
             return sum((m.Tr[t] - m.Tr_meas[t]) ** 2 for t in m.measT)
         else:
             return sum(
@@ -254,25 +265,68 @@ def generate_model(data):
     m.Total_Cost_Objective = Objective(rule=total_cost_rule, sense=minimize)
 
     # Discretize model
-    disc = TransformationFactory('dae.collocation')
+    disc = TransformationFactory("dae.collocation")
     disc.apply_to(m, nfe=20, ncp=4)
     return m
+
+
+class SemiBatchExperiment(Experiment):
+
+    def __init__(self, data):
+        self.data = data
+        self.model = None
+
+    def create_model(self):
+        self.model = generate_model(self.data)
+
+    def label_model(self):
+
+        m = self.model
+
+        m.experiment_outputs = Suffix(direction=Suffix.LOCAL)
+        m.experiment_outputs.update(
+            (m.Ca[t], self.data["Ca_meas"][f"{t}"]) for t in m.measT
+        )
+        m.experiment_outputs.update(
+            (m.Cb[t], self.data["Cb_meas"][f"{t}"]) for t in m.measT
+        )
+        m.experiment_outputs.update(
+            (m.Cc[t], self.data["Cc_meas"][f"{t}"]) for t in m.measT
+        )
+        m.experiment_outputs.update(
+            (m.Tr[t], self.data["Tr_meas"][f"{t}"]) for t in m.measT
+        )
+
+        m.unknown_parameters = Suffix(direction=Suffix.LOCAL)
+        m.unknown_parameters.update(
+            (k, ComponentUID(k)) for k in [m.k1, m.k2, m.E1, m.E2]
+        )
+
+    def finalize_model(self):
+        pass
+
+    def get_labeled_model(self):
+        self.create_model()
+        self.label_model()
+        self.finalize_model()
+
+        return self.model
 
 
 def main():
     # Data loaded from files
     file_dirname = dirname(abspath(str(__file__)))
-    file_name = abspath(join(file_dirname, 'exp2.out'))
-    with open(file_name, 'r') as infile:
+    file_name = abspath(join(file_dirname, "exp2.out"))
+    with open(file_name, "r") as infile:
         data = json.load(infile)
-    data['experiment'] = 2
+    data["experiment"] = 2
 
     model = generate_model(data)
-    solver = SolverFactory('ipopt')
+    solver = SolverFactory("ipopt")
     solver.solve(model)
-    print('k1 = ', model.k1())
-    print('E1 = ', model.E1())
+    print("k1 = ", model.k1())
+    print("E1 = ", model.E1())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

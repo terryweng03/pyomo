@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.core.expr.numvalue import (
     value,
@@ -33,6 +31,8 @@ from pyomo.core.expr import (
     exactly,
     atleast,
     atmost,
+    all_different,
+    count_if,
     implies,
     lnot,
     xor,
@@ -61,8 +61,6 @@ from pyomo.core.expr import (
 from pyomo.core.expr.calculus.derivatives import differentiate
 from pyomo.core.expr.taylor_series import taylor_series_expansion
 
-import pyomo.core.kernel
-
 from pyomo.common.collections import ComponentMap
 from pyomo.core.expr.symbol_map import SymbolMap
 from pyomo.core.expr import (
@@ -78,6 +76,7 @@ from pyomo.core.expr import (
     expr_errors,
     calculus,
 )
+
 from pyomo.core import expr, util, kernel
 
 from pyomo.core.expr.numvalue import (
@@ -99,7 +98,7 @@ from pyomo.core.expr.boolean_value import (
     BooleanValue,
     native_logical_values,
 )
-from pyomo.core.kernel.objective import minimize, maximize
+from pyomo.core.base import minimize, maximize
 from pyomo.core.base.config import PyomoOptions
 
 from pyomo.core.base.expression import Expression
@@ -119,7 +118,6 @@ from pyomo.core.base.label import (
 #
 from pyomo.core.base.component import name, Component, ModelComponentFactory
 from pyomo.core.base.componentuid import ComponentUID
-import pyomo.core.base.indexed_component
 from pyomo.core.base.action import BuildAction
 from pyomo.core.base.check import BuildCheck
 from pyomo.core.base.set import Set, SetOf, simple_set_rule, RangeSet

@@ -1,18 +1,21 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
+import logging
 
 from pyomo.gdp import GDP_Error
 from pyomo.common.collections import ComponentSet
-from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr
+from pyomo.contrib.fbbt.expression_bounds_walker import ExpressionBoundsVisitor
+import pyomo.contrib.fbbt.interval as interval
 from pyomo.core import Suffix
+
+logger = logging.getLogger(__name__)
 
 
 def _convert_M_to_tuple(M, constraint, disjunct=None):
@@ -22,7 +25,7 @@ def _convert_M_to_tuple(M, constraint, disjunct=None):
         else:
             try:
                 M = (-M, M)
-            except:
+            except Exception:
                 logger.error(
                     "Error converting scalar M-value %s "
                     "to (-M,M).  Is %s not a numeric type?" % (M, type(M))
@@ -89,7 +92,7 @@ def _warn_for_unused_bigM_args(bigM, used_args, logger):
             logger.warning(warning_msg)
 
 
-class _BigM_MixIn(object):
+class _BigM_MixIn:
     def _get_bigM_arg_list(self, bigm_args, block):
         # Gather what we know about blocks from args exactly once. We'll still
         # check for constraints in the moment, but if that fails, we've
@@ -102,6 +105,13 @@ class _BigM_MixIn(object):
                 arg_list.append({block: bigm_args[block]})
             block = block.parent_block()
         return arg_list
+
+    def _set_up_expr_bound_visitor(self):
+        # we assume the default config arg for 'assume_fixed_vars_permanent,`
+        # and we will change it during apply_to if we need to
+        self._expr_bound_visitor = ExpressionBoundsVisitor(
+            use_fixed_var_values_as_bounds=False
+        )
 
     def _process_M_value(
         self,
@@ -144,7 +154,7 @@ class _BigM_MixIn(object):
         parent = constraint.parent_component()
         if constraint in bigMargs:
             m = bigMargs[constraint]
-            (lower, upper, need_lower, need_upper) = self._process_M_value(
+            lower, upper, need_lower, need_upper = self._process_M_value(
                 m,
                 lower,
                 upper,
@@ -159,7 +169,7 @@ class _BigM_MixIn(object):
                 return lower, upper
         elif parent in bigMargs:
             m = bigMargs[parent]
-            (lower, upper, need_lower, need_upper) = self._process_M_value(
+            lower, upper, need_lower, need_upper = self._process_M_value(
                 m,
                 lower,
                 upper,
@@ -176,7 +186,7 @@ class _BigM_MixIn(object):
         # use the precomputed traversal up the blocks
         for arg in arg_list:
             for block, val in arg.items():
-                (lower, upper, need_lower, need_upper) = self._process_M_value(
+                lower, upper, need_lower, need_upper = self._process_M_value(
                     val,
                     lower,
                     upper,
@@ -193,7 +203,7 @@ class _BigM_MixIn(object):
         # last check for value for None!
         if None in bigMargs:
             m = bigMargs[None]
-            (lower, upper, need_lower, need_upper) = self._process_M_value(
+            lower, upper, need_lower, need_upper = self._process_M_value(
                 m,
                 lower,
                 upper,
@@ -210,10 +220,8 @@ class _BigM_MixIn(object):
         return lower, upper
 
     def _estimate_M(self, expr, constraint):
-        expr_lb, expr_ub = compute_bounds_on_expr(
-            expr, ignore_fixed=not self._config.assume_fixed_vars_permanent
-        )
-        if expr_lb is None or expr_ub is None:
+        expr_lb, expr_ub = self._expr_bound_visitor.walk_expression(expr)
+        if expr_lb == -interval.inf or expr_ub == interval.inf:
             raise GDP_Error(
                 "Cannot estimate M for unbounded "
                 "expressions.\n\t(found while processing "
@@ -226,7 +234,14 @@ class _BigM_MixIn(object):
         return tuple(M)
 
     def _add_constraint_expressions(
-        self, c, i, M, indicator_var, newConstraint, constraintMap
+        self,
+        c,
+        i,
+        M,
+        indicator_var,
+        newConstraint,
+        constraint_map,
+        indicator_expression=None,
     ):
         # Since we are both combining components from multiple blocks and using
         # local names, we need to make sure that the first index for
@@ -238,6 +253,8 @@ class _BigM_MixIn(object):
         # over the constraint indices, but I don't think it matters a lot.)
         unique = len(newConstraint)
         name = c.local_name + "_%s" % unique
+        if indicator_expression is None:
+            indicator_expression = 1 - indicator_var
 
         if c.lower is not None:
             if M[0] is None:
@@ -245,25 +262,21 @@ class _BigM_MixIn(object):
                     "Cannot relax disjunctive constraint '%s' "
                     "because M is not defined." % name
                 )
-            M_expr = M[0] * (1 - indicator_var)
+            M_expr = M[0] * indicator_expression
             newConstraint.add((name, i, 'lb'), c.lower <= c.body - M_expr)
-            constraintMap['transformedConstraints'][c] = [newConstraint[name, i, 'lb']]
-            constraintMap['srcConstraints'][newConstraint[name, i, 'lb']] = c
+            constraint_map.transformed_constraints[c].append(
+                newConstraint[name, i, 'lb']
+            )
+            constraint_map.src_constraint[newConstraint[name, i, 'lb']] = c
         if c.upper is not None:
             if M[1] is None:
                 raise GDP_Error(
                     "Cannot relax disjunctive constraint '%s' "
                     "because M is not defined." % name
                 )
-            M_expr = M[1] * (1 - indicator_var)
+            M_expr = M[1] * indicator_expression
             newConstraint.add((name, i, 'ub'), c.body - M_expr <= c.upper)
-            transformed = constraintMap['transformedConstraints'].get(c)
-            if transformed is not None:
-                constraintMap['transformedConstraints'][c].append(
-                    newConstraint[name, i, 'ub']
-                )
-            else:
-                constraintMap['transformedConstraints'][c] = [
-                    newConstraint[name, i, 'ub']
-                ]
-            constraintMap['srcConstraints'][newConstraint[name, i, 'ub']] = c
+            constraint_map.transformed_constraints[c].append(
+                newConstraint[name, i, 'ub']
+            )
+            constraint_map.src_constraint[newConstraint[name, i, 'ub']] = c

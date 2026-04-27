@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import sys
 import logging
@@ -15,7 +13,7 @@ import logging
 from pyomo.common.collections import Bunch
 from pyomo.opt import TerminationCondition
 from pyomo.solvers.tests.models.base import all_models
-from pyomo.solvers.tests.solvers import test_solver_cases
+from pyomo.solvers.tests.solvers import test_solver_cases as _test_solver_cases
 from pyomo.core.kernel.block import IBlock
 
 # For expected failures that appear in all known version
@@ -105,8 +103,28 @@ SkipTests['cplex', 'nl', 'QCP_simple'] = (
 #
 # GUROBI
 #
-# NO EXPECTED FAILURES
-#
+
+# 12.0.3 (for AMPL only) returns all zeros for suffixes
+MissingSuffixFailures['gurobi', 'nl', 'LP_duals_maximize'] = (
+    lambda v: v[:3] >= (12, 0, 3),
+    {'dual': (False, {})},
+    "AMPL Gurobi>=12.0.3 fails to report duals for problems solved in presolve",
+)
+MissingSuffixFailures['gurobi', 'nl', 'LP_duals_minimize'] = (
+    lambda v: v[:3] >= (12, 0, 3),
+    {'dual': (False, {})},
+    "AMPL Gurobi>=12.0.3 fails to report duals for problems solved in presolve",
+)
+MissingSuffixFailures['gurobi', 'nl', 'LP_inactive_index'] = (
+    lambda v: v[:3] >= (12, 0, 3),
+    {'dual': (False, {})},
+    "AMPL Gurobi>=12.0.3 fails to report duals for problems solved in presolve",
+)
+MissingSuffixFailures['gurobi', 'nl', 'QP_simple'] = (
+    lambda v: v[:3] >= (12, 0, 3),
+    {'dual': (False, {})},
+    "AMPL Gurobi>=12.0.3 fails to report duals for problems solved in presolve",
+)
 
 #
 # GAMS
@@ -121,6 +139,26 @@ ExpectedFailures['gams', 'gms', 'MILP_unbounded'] = (
 )
 
 ExpectedFailures['gams', 'python', 'MILP_unbounded'] = (
+    lambda v: v <= _trunk_version,
+    "GAMS requires finite bounds for integer variables. 1.0E100 is as extreme"
+    "as GAMS will define, and should be enough to appear unbounded. If the"
+    "solver cannot handle this bound, explicitly set a smaller bound on"
+    "the pyomo model, or try a different GAMS solver.",
+)
+
+#
+# GAMS V2
+#
+
+ExpectedFailures['gams_v2', 'gms', 'MILP_unbounded'] = (
+    lambda v: v <= _trunk_version,
+    "GAMS requires finite bounds for integer variables. 1.0E100 is as extreme"
+    "as GAMS will define, and should be enough to appear unbounded. If the"
+    "solver cannot handle this bound, explicitly set a smaller bound on"
+    "the pyomo model, or try a different GAMS solver.",
+)
+
+ExpectedFailures['gams_v2', 'python', 'MILP_unbounded'] = (
     lambda v: v <= _trunk_version,
     "GAMS requires finite bounds for integer variables. 1.0E100 is as extreme"
     "as GAMS will define, and should be enough to appear unbounded. If the"
@@ -280,13 +318,49 @@ for prob in ('LP_unbounded', 'LP_unbounded_kernel'):
         lambda v: v[:3] == (22, 1, 19),
         'BARON 22.1.19 reports model as optimal',
     )
+for prob in (
+    'LP_block',
+    'LP_duals_maximize',
+    'LP_duals_minimize',
+    'LP_inactive_index',
+    'LP_simple',
+    'LP_trivial_constraints',
+    'QCP_simple',
+    'QP_simple',
+):
+    ExpectedFailures['baron', 'bar', prob] = (
+        lambda v: (25, 7, 10) <= v[:3] <= (25, 7, 16),
+        "BARON 25.7.16 returns 0 for duals/rc for models solved in preprocessing",
+    )
 
 
 #
 # KNITROAMPL
 #
-# NO EXPECTED FAILURES
+for prob in ('LP_trivial_constraints', 'LP_trivial_constraints_kernel'):
+    ExpectedFailures['knitroampl', 'nl', prob] = (
+        lambda v: True,
+        'Knitro does not consider tight trivial constraints to have zero dual value',
+    )
+
+for prob in ('MILP_unbounded', 'MILP_unbounded_kernel'):
+    ExpectedFailures['knitroampl', 'nl', prob] = (
+        lambda v: v[:2] <= (14, 2),
+        'Unbounded MILP detection not operational in Knitro, fixed in 15.0',
+    )
+
 #
+# CUOPT
+#
+SkipTests['cuopt', 'python', 'LP_duals_maximize'] = (
+    lambda v: True,
+    "cuopt fails on RC for maximization",
+)
+for _test in ('MILP_unbounded', 'MILP_unbounded_kernel'):
+    SkipTests['cuopt', 'python', _test] = (
+        lambda v: True,
+        "cuopt does not differentiate between unbounded and infeasible status",
+    )
 
 
 def generate_scenarios(arg=None):
@@ -297,8 +371,8 @@ def generate_scenarios(arg=None):
         _model = all_models(model)
         if not arg is None and not arg(_model):
             continue
-        for solver, io in sorted(test_solver_cases()):
-            _solver_case = test_solver_cases(solver, io)
+        for solver, io in sorted(_test_solver_cases()):
+            _solver_case = _test_solver_cases(solver, io)
             _ver = _solver_case.version
 
             # Skip this test case if the solver doesn't support the
@@ -355,7 +429,7 @@ def run_scenarios(options):
 
     for key, test_case in generate_scenarios():
         model, solver, io = key
-        if len(solvers) > 0 and not solver in solvers:
+        if len(solvers) > 0 and solver not in solvers:
             continue
         if test_case.status == 'skip':
             continue
@@ -381,7 +455,7 @@ def run_scenarios(options):
         # Validate solution status
         try:
             model_class.post_solve_test_validation(None, results)
-        except:
+        except Exception:
             if test_case.status == 'expected failure':
                 stat[key] = (True, "Expected failure")
             else:
@@ -431,7 +505,7 @@ def run_scenarios(options):
     total = Bunch(NumEPass=0, NumEFail=0, NumUPass=0, NumUFail=0)
     for key in stat:
         model, solver, io = key
-        if not solver in summary:
+        if solver not in summary:
             summary[solver] = Bunch(NumEPass=0, NumEFail=0, NumUPass=0, NumUFail=0)
         _pass, _str = stat[key]
         if _pass:

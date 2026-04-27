@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """Tests for the Logic-based Branch and Bound solver plugin."""
 
@@ -59,6 +57,7 @@ class TestGDPopt_LBB(unittest.TestCase):
         self.assertIsNone(m.d.disjuncts[0].indicator_var.value)
         self.assertIsNone(m.d.disjuncts[1].indicator_var.value)
 
+    @unittest.skipUnless(z3_available, "Z3 SAT solver is not available")
     def test_infeasible_GDP_check_sat(self):
         """Test for infeasible GDP with check_sat option True."""
         m = ConcreteModel()

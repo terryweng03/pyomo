@@ -1,15 +1,12 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
-from __future__ import division
 
 import inspect
 import logging
@@ -79,14 +76,16 @@ class RevertToNonrecursive(Exception):
 # -------------------------------------------------------
 
 
-class StreamBasedExpressionVisitor(object):
+class StreamBasedExpressionVisitor:
     """This class implements a generic stream-based expression walker.
 
-     This visitor walks an expression tree using a depth-first strategy
-     and generates a full event stream similar to other tree visitors
-     (e.g., the expat XML parser).  The following events are triggered
-     through callback functions as the traversal enters and leaves nodes
-     in the tree:
+    This visitor walks an expression tree using a depth-first strategy
+    and generates a full event stream similar to other tree visitors
+    (e.g., the expat XML parser).  The following events are triggered
+    through callback functions as the traversal enters and leaves nodes
+    in the tree:
+
+    ::
 
        initializeWalker(expr) -> walk, result
        enterNode(N1) -> args, data
@@ -100,7 +99,7 @@ class StreamBasedExpressionVisitor(object):
        exitNode(N1, data) -> N1_result
        finalizeWalker(result) -> result
 
-     Individual event callbacks match the following signatures:
+    Individual event callbacks match the following signatures:
 
     walk, result = initializeWalker(self, expr):
 
@@ -123,7 +122,7 @@ class StreamBasedExpressionVisitor(object):
          not defined, the default behavior is equivalent to returning
          (None, []).
 
-     node_result = exitNode(self, node, data):
+    node_result = exitNode(self, node, data):
 
          exitNode() is called after the node is completely processed (as
          the walker returns up the tree to the parent node).  It is
@@ -133,7 +132,7 @@ class StreamBasedExpressionVisitor(object):
          this node.  If not specified, the default action is to return
          the data object from enterNode().
 
-     descend, child_result = beforeChild(self, node, child, child_idx):
+    descend, child_result = beforeChild(self, node, child, child_idx):
 
          beforeChild() is called by a node for every child before
          entering the child node.  The node, child node, and child index
@@ -145,7 +144,7 @@ class StreamBasedExpressionVisitor(object):
          equivalent to (True, None).  The default behavior if not
          specified is equivalent to (True, None).
 
-     data = acceptChildResult(self, node, data, child_result, child_idx):
+    data = acceptChildResult(self, node, data, child_result, child_idx):
 
          acceptChildResult() is called for each child result being
          returned to a node.  This callback is responsible for recording
@@ -156,7 +155,7 @@ class StreamBasedExpressionVisitor(object):
          returned.  If acceptChildResult is not specified, it does
          nothing if data is None, otherwise it calls data.append(result).
 
-     afterChild(self, node, child, child_idx):
+    afterChild(self, node, child, child_idx):
 
          afterChild() is called by a node for every child node
          immediately after processing the node is complete before control
@@ -165,7 +164,7 @@ class StreamBasedExpressionVisitor(object):
          are passed, and nothing is returned.  If afterChild is not
          specified, no action takes place.
 
-     finalizeResult(self, result):
+    finalizeResult(self, result):
 
          finalizeResult() is called once after the entire expression tree
          has been walked.  It is passed the result returned by the root
@@ -173,10 +172,10 @@ class StreamBasedExpressionVisitor(object):
          the walker returns the result obtained from the exitNode
          callback on the root node.
 
-     Clients interact with this class by either deriving from it and
-     implementing the necessary callbacks (see above), assigning callable
-     functions to an instance of this class, or passing the callback
-     functions as arguments to this class' constructor.
+    Clients interact with this class by either deriving from it and
+    implementing the necessary callbacks (see above), assigning callable
+    functions to an instance of this class, or passing the callback
+    functions as arguments to this class' constructor.
 
     """
 
@@ -254,7 +253,14 @@ class StreamBasedExpressionVisitor(object):
         )
 
     def walk_expression(self, expr):
-        """Walk an expression, calling registered callbacks."""
+        """Walk an expression, calling registered callbacks.
+
+        This is the standard interface for running the visitor.  It
+        defaults to using an efficient recursive implementation of the
+        visitor, falling back on :py:meth:`walk_expression_nonrecursive`
+        if the recursion stack gets too deep.
+
+        """
         if self.initializeWalker is not None:
             walk, root = self.initializeWalker(expr)
             if not walk:
@@ -496,7 +502,13 @@ class StreamBasedExpressionVisitor(object):
         )
 
     def walk_expression_nonrecursive(self, expr):
-        """Walk an expression, calling registered callbacks."""
+        """Nonrecursively walk an expression, calling registered callbacks.
+
+        This routine is safer than the recursive walkers for deep (or
+        unbalanced) trees.  It is, however, slightly slower than the
+        recursive implementations.
+
+        """
         #
         # This walker uses a linked list to store the stack (instead of
         # an array).  The nodes of the linked list are 6-member tuples:
@@ -665,8 +677,12 @@ class StreamBasedExpressionVisitor(object):
                 ptr = ptr[0]
 
 
-class SimpleExpressionVisitor(object):
-
+@deprecated(
+    "The SimpleExpressionVisitor is deprecated.  "
+    "Please use the StreamBasedExpressionVisitor instead.",
+    version='6.9.0',
+)
+class SimpleExpressionVisitor:
     """
     Note:
         This class is a customization of the PyUtilib :class:`SimpleVisitor
@@ -723,6 +739,14 @@ class SimpleExpressionVisitor(object):
             The return value is determined by the :func:`finalize` function,
             which may be defined by the user.  Defaults to :const:`None`.
         """
+        if (
+            node.__class__ in nonpyomo_leaf_types
+            or not node.is_expression_type()
+            or node.nargs() == 0
+        ):
+            self.visit(node)
+            return self.finalize()
+
         dq = deque([node])
         while dq:
             current = dq.popleft()
@@ -793,7 +817,7 @@ class SimpleExpressionVisitor(object):
                     dq.append(c)
 
 
-class ExpressionValueVisitor(object):
+class ExpressionValueVisitor:
     """
     Note:
         This class is a customization of the PyUtilib :class:`ValueVisitor
@@ -881,7 +905,7 @@ class ExpressionValueVisitor(object):
         if flag:
             return self.finalize(value)
         # _stack = [ (node, self.children(node), 0, len(self.children(node)), [])]
-        _stack = [(node, node._args_, 0, node.nargs(), [])]
+        _stack = [(node, node.args, 0, node.nargs(), [])]
         #
         # Iterate until the stack is empty
         #
@@ -913,7 +937,7 @@ class ExpressionValueVisitor(object):
                     _stack.append((_obj, _argList, _idx, _len, _result))
                     _obj = _sub
                     # _argList                = self.children(_sub)
-                    _argList = _sub._args_
+                    _argList = _sub.args
                     _idx = 0
                     _len = _sub.nargs()
                     _result = []
@@ -923,7 +947,8 @@ class ExpressionValueVisitor(object):
             ans = self.visit(_obj, _result)
             if _stack:
                 #
-                # "return" the recursion by putting the return value on the end of the results stack
+                # "return" the recursion by putting the return value on
+                # the end of the results stack
                 #
                 _stack[-1][-1].append(ans)
             else:
@@ -1231,9 +1256,13 @@ class _EvaluateConstantExpressionVisitor(ExpressionValueVisitor):
                 # opportunity to map the error to a NonConstant / Fixed
                 # expression error
                 if not node.is_fixed():
-                    raise NonConstantExpressionError()
+                    raise NonConstantExpressionError(
+                        f"{node} ({type(node).__name__}) is not fixed"
+                    )
                 if not node.is_constant():
-                    raise FixedExpressionError()
+                    raise FixedExpressionError(
+                        f"{node} ({type(node).__name__}) is not constant"
+                    )
                 raise
 
             if not node.is_fixed():
@@ -1317,20 +1346,25 @@ evaluate_expression.visitor_active = False
 # =====================================================
 
 
-class _ComponentVisitor(SimpleExpressionVisitor):
+class _ComponentVisitor(StreamBasedExpressionVisitor):
     def __init__(self, types):
-        self.seen = set()
-        if types.__class__ is set:
-            self.types = types
-        else:
-            self.types = set(types)
+        super().__init__()
+        if types.__class__ is not set:
+            types = set(types)
+        self._types = types
 
-    def visit(self, node):
-        if node.__class__ in self.types:
-            if id(node) in self.seen:
-                return
-            self.seen.add(id(node))
-            return node
+    def initializeWalker(self, expr):
+        self._objs = []
+        self._seen = set()
+        return True, None
+
+    def finalizeResult(self, result):
+        return self._objs
+
+    def exitNode(self, node, data):
+        if node.__class__ in self._types and id(node) not in self._seen:
+            self._seen.add(id(node))
+            self._objs.append(node)
 
 
 def identify_components(expr, component_types):
@@ -1352,7 +1386,7 @@ def identify_components(expr, component_types):
     # in the expression.
     #
     visitor = _ComponentVisitor(component_types)
-    yield from visitor.xbfs_yield_leaves(expr)
+    yield from visitor.walk_expression(expr)
 
 
 # =====================================================
@@ -1360,22 +1394,100 @@ def identify_components(expr, component_types):
 # =====================================================
 
 
-class _VariableVisitor(SimpleExpressionVisitor):
-    def __init__(self):
-        self.seen = set()
+class IdentifyVariableVisitor(StreamBasedExpressionVisitor):
+    def __init__(self, include_fixed=False, named_expression_cache=None):
+        """Visitor that collects all unique variables participating in an
+        expression
 
-    def visit(self, node):
-        if node.__class__ in nonpyomo_leaf_types:
-            return
+        Args:
+            include_fixed (bool): Whether to include fixed variables
+            named_expression_cache (optional, dict): Dict mapping ids of named
+                expressions to a tuple of the list of all variables and the
+                set of all variable ids contained in the named expression.
 
-        if node.is_variable_type():
-            if id(node) in self.seen:
-                return
-            self.seen.add(id(node))
-            return node
+        """
+        super().__init__()
+        self._include_fixed = include_fixed
+        self._cache = named_expression_cache
+        # Stack of named expressions. This holds the tuple
+        #     (eid, _seen, _exprs)
+        # where eid is the id() of the subexpression we are currently
+        # processing, and _seen and _exprs are from the parent context.
+        self._expr_stack = []
+        # The following attributes will be added by initializeWalker:
+        # self._seen: dict(eid: obj)
+        # self._exprs: list of (e, e.expr) for any (nested) named expressions
+
+    def initializeWalker(self, expr):
+        assert not self._expr_stack
+        self._seen = {}
+        self._exprs = None
+        if not self.beforeChild(None, expr, 0)[0]:
+            return False, self.finalizeResult(None)
+        return True, expr
+
+    def beforeChild(self, parent, child, index):
+        if child.__class__ in native_types:
+            return False, None
+        elif child.is_expression_type():
+            if child.is_named_expression_type():
+                return self._process_named_expr(child)
+            else:
+                return True, None
+        elif child.is_variable_type() and (self._include_fixed or not child.fixed):
+            if id(child) not in self._seen:
+                self._seen[id(child)] = child
+        return False, None
+
+    def exitNode(self, node, data):
+        if node.is_named_expression_type() and self._cache is not None:
+            # If we are returning from a named expression, we must make
+            # sure that we properly restore the "outer" context and then
+            # merge the objects from the named expression we just exited
+            # into the list for the parent expression context.
+            _seen = self._seen
+            _exprs = self._exprs
+            eid, self._seen, self._exprs = self._expr_stack.pop()
+            assert eid == id(node)
+            self._merge_obj_lists(_seen, _exprs)
+
+    def finalizeResult(self, result):
+        assert not self._expr_stack
+        return self._seen.values()
+
+    def _merge_obj_lists(self, _seen, _exprs):
+        self._seen.update(_seen)
+        if self._exprs is not None:
+            self._exprs.update(_exprs)
+
+    def _process_named_expr(self, child):
+        if self._cache is None:
+            return True, None
+        eid = id(child)
+        if eid in self._cache:
+            _seen, _exprs = self._cache[eid]
+            if all(c.expr is e for c, e in _exprs.values()):
+                # We have already encountered this named expression. We just add
+                # the cached objects to our list and don't descend.
+                #
+                # Note that a cache hit requires not only that we have seen
+                # this expression before, but also that none of the named
+                # expressions have changed.  If they have, then the cache
+                # miss will fall over to the else clause below and descend
+                # into the expression, (implicitly) rebuilding the cache.
+                self._merge_obj_lists(_seen, _exprs)
+                return False, None
+        # If we are descending into a new named expression or a cached
+        # named expression where the cache is now invalid.  Initialize a
+        # cache to store the expression's local objects.
+        self._expr_stack.append((eid, self._seen, self._exprs))
+        self._seen = {}
+        self._exprs = {eid: (child, child.expr)}
+        self._cache[eid] = (self._seen, self._exprs)
+        return True, None
 
 
-def identify_variables(expr, include_fixed=True):
+def identify_variables(expr, include_fixed=True, named_expression_cache=None):
     """
     A generator that yields a sequence of variables
     in an expression tree.
@@ -1389,22 +1501,17 @@ def identify_variables(expr, include_fixed=True):
     Yields:
         Each variable that is found.
     """
-    visitor = _VariableVisitor()
-    if include_fixed:
-        for v in visitor.xbfs_yield_leaves(expr):
-            if isinstance(v, tuple):
-                yield from v
-            else:
-                yield v
-    else:
-        for v in visitor.xbfs_yield_leaves(expr):
-            if isinstance(v, tuple):
-                for v_i in v:
-                    if not v_i.is_fixed():
-                        yield v_i
-            else:
-                if not v.is_fixed():
-                    yield v
+    v = identify_variables.visitor
+    save = v._include_fixed, v._cache
+    try:
+        v._include_fixed = include_fixed
+        v._cache = named_expression_cache
+        yield from v.walk_expression(expr)
+    finally:
+        v._include_fixed, v._cache = save
+
+
+identify_variables.visitor = IdentifyVariableVisitor()
 
 
 # =====================================================
@@ -1412,20 +1519,27 @@ def identify_variables(expr, include_fixed=True):
 # =====================================================
 
 
-class _MutableParamVisitor(SimpleExpressionVisitor):
+class IdentifyMutableParamVisitor(IdentifyVariableVisitor):
     def __init__(self):
-        self.seen = set()
+        # Hide the IdentifyVariableVisitor API (not relevant here)
+        super().__init__()
 
-    def visit(self, node):
-        if node.__class__ in nonpyomo_leaf_types:
-            return
-
-        # TODO: Confirm that this has the right semantics
-        if not node.is_variable_type() and node.is_fixed() and not node.is_constant():
-            if id(node) in self.seen:
-                return
-            self.seen.add(id(node))
-            return node
+    def beforeChild(self, parent, child, index):
+        if child.__class__ in native_types:
+            return False, None
+        elif child.is_expression_type():
+            if child.is_named_expression_type():
+                return self._process_named_expr(child)
+            else:
+                return True, None
+        if (
+            not child.is_variable_type()
+            and child.is_fixed()
+            and not child.is_constant()
+        ):
+            if id(child) not in self._seen:
+                self._seen[id(child)] = child
+        return False, None
 
 
 def identify_mutable_parameters(expr):
@@ -1439,9 +1553,10 @@ def identify_mutable_parameters(expr):
     Yields:
         Each mutable parameter that is found.
     """
-    visitor = _MutableParamVisitor()
-    yield from visitor.xbfs_yield_leaves(expr)
+    yield from identify_mutable_parameters.visitor.walk_expression(expr)
 
+
+identify_mutable_parameters.visitor = IdentifyMutableParamVisitor()
 
 # =====================================================
 #  polynomial_degree
@@ -1543,6 +1658,7 @@ RIGHT_TO_LEFT = common.OperatorAssociativity.RIGHT_TO_LEFT
 
 class _ToStringVisitor(ExpressionValueVisitor):
     _expression_handlers = None
+    _leaf_node_types = set()
 
     def __init__(self, verbose, smap):
         super(_ToStringVisitor, self).__init__()
@@ -1551,35 +1667,33 @@ class _ToStringVisitor(ExpressionValueVisitor):
 
     def visit(self, node, values):
         """Visit nodes that have been expanded"""
-        for i, val in enumerate(values):
-            arg = node._args_[i]
-
-            if arg is None:
-                values[i] = 'Undefined'
-            elif arg.__class__ in native_numeric_types:
-                pass
-            elif arg.__class__ in nonpyomo_leaf_types:
-                values[i] = f"'{val}'"
-            else:
-                parens = False
-                if (
-                    not self.verbose
-                    and arg.is_expression_type()
-                    and node.PRECEDENCE is not None
-                ):
-                    if arg.PRECEDENCE is None:
-                        pass
-                    elif node.PRECEDENCE < arg.PRECEDENCE:
+        node_prec = node.PRECEDENCE
+        if node_prec is not None and not self.verbose:
+            for i, (val, arg) in enumerate(zip(values, node.args)):
+                arg_prec = getattr(arg, 'PRECEDENCE', None)
+                if arg_prec is None:
+                    # This embedded constant (4) is evil, but to actually
+                    # import the NegationExpression.PRECEDENCE from
+                    # numeric_expr would create a circular dependency.
+                    #
+                    # FIXME: rework the dependencies between
+                    # numeric_expr and visitor
+                    if val[0] == '-' and node_prec < 4:
+                        values[i] = f"({val})"
+                else:
+                    if node_prec < arg_prec:
                         parens = True
-                    elif node.PRECEDENCE == arg.PRECEDENCE:
+                    elif node_prec == arg_prec:
                         if i == 0:
                             parens = node.ASSOCIATIVITY != LEFT_TO_RIGHT
-                        elif i == len(node._args_) - 1:
+                        elif i == node.nargs() - 1:
                             parens = node.ASSOCIATIVITY != RIGHT_TO_LEFT
                         else:
                             parens = True
-                if parens:
-                    values[i] = f"({val})"
+                    else:
+                        parens = False
+                    if parens:
+                        values[i] = f"({val})"
 
         if self._expression_handlers and node.__class__ in self._expression_handlers:
             return self._expression_handlers[node.__class__](self, node, values)
@@ -1593,16 +1707,21 @@ class _ToStringVisitor(ExpressionValueVisitor):
         Return True if the node is not expanded.
         """
         if node is None:
-            return True, None
+            return True, 'Undefined'
 
-        if node.__class__ in nonpyomo_leaf_types:
+        if node.__class__ in native_numeric_types:
             return True, str(node)
 
-        if node.is_expression_type():
+        if node.__class__ in nonpyomo_leaf_types:
+            return True, repr(node)
+
+        if node.is_expression_type() and node.__class__ not in self._leaf_node_types:
             return False, None
 
         if hasattr(node, 'to_string'):
             return True, node.to_string(verbose=self.verbose, smap=self.smap)
+        elif self.smap is not None:
+            return True, self.smap.getSymbol(node)
         else:
             return True, str(node)
 

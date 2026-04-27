@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 #
 # This module supports testing the attempt_import() functionality when
@@ -23,15 +21,16 @@ from pyomo.common.tests.dep_mod import (
     bogus_nonexisting_module_available as has_bogus_nem,
 )
 
-bogus, bogus_available = attempt_import('nonexisting.module.bogus', defer_check=True)
+bogus, bogus_available = attempt_import('nonexisting.module.bogus', defer_import=True)
 
 pkl_test, pkl_available = attempt_import(
-    'nonexisting.module.pickle_test', deferred_submodules=['submod'], defer_check=True
+    'nonexisting.module.pickle_test', deferred_submodules=['submod'], defer_import=True
 )
 
 pyo, pyo_available = attempt_import(
     'pyomo',
     alt_names=['pyo'],
+    defer_import=True,
     deferred_submodules={'version': None, 'common.tests.dep_mod': ['dm']},
 )
 

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import pyomo.common.unittest as unittest
 from pyomo.contrib.cp.interval_var import (
@@ -17,7 +15,7 @@ from pyomo.contrib.cp.interval_var import (
     IntervalVarPresence,
 )
 from pyomo.core.expr import GetItemExpression, GetAttrExpression
-from pyomo.environ import ConcreteModel, Integers, Set, value, Var
+from pyomo.environ import ConcreteModel, Integers, Reference, Set, value, Var
 
 
 class TestScalarIntervalVar(unittest.TestCase):
@@ -217,5 +215,24 @@ class TestIndexedIntervalVar(unittest.TestCase):
         self.assertIs(thing2.args[0], thing1)
         self.assertEqual(thing2.args[1], 'start_time')
 
-        # TODO: But this is where it dies.
         expr1 = m.act[m.i, 2].start_time.before(m.act[m.i**2, 1].end_time)
+
+    def test_reference(self):
+        m = ConcreteModel()
+        m.act = IntervalVar([1, 2], end=[0, 10], optional=True)
+
+        thing = Reference(m.act[:].is_present)
+        self.assertIs(thing[1], m.act[1].is_present)
+        self.assertIs(thing[2], m.act[2].is_present)
+
+        thing = Reference(m.act[:].start_time)
+        self.assertIs(thing[1], m.act[1].start_time)
+        self.assertIs(thing[2], m.act[2].start_time)
+
+        thing = Reference(m.act[:].end_time)
+        self.assertIs(thing[1], m.act[1].end_time)
+        self.assertIs(thing[2], m.act[2].end_time)
+
+        thing = Reference(m.act[:].length)
+        self.assertIs(thing[1], m.act[1].length)
+        self.assertIs(thing[2], m.act[2].length)

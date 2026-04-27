@@ -1,5 +1,15 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 # -*- coding: utf-8 -*-
 """Tests for the MindtPy solver."""
+
 import pyomo.common.unittest as unittest
 from pyomo.contrib.mindtpy.tests.eight_process_problem import EightProcessFlowsheet
 from pyomo.contrib.mindtpy.tests.MINLP_simple import SimpleMINLP as SimpleMINLP
@@ -17,8 +27,13 @@ from pyomo.util.infeasible import log_infeasible_constraints
 from pyomo.contrib.mindtpy.tests.feasibility_pump1 import FeasPump1
 from pyomo.contrib.mindtpy.tests.feasibility_pump2 import FeasPump2
 
-required_solvers = ('ipopt', 'cplex')
-# TODO: 'appsi_highs' will fail here.
+if SolverFactory('appsi_highs').available(exception_flag=False) and SolverFactory(
+    'appsi_highs'
+).version() >= (1, 7, 0):
+    required_solvers = ('ipopt', 'appsi_highs')
+else:
+    required_solvers = ('ipopt', 'glpk')
+
 if all(SolverFactory(s).available(exception_flag=False) for s in required_solvers):
     subsolvers_available = True
 else:
@@ -65,6 +80,22 @@ class TestMindtPy(unittest.TestCase):
                     mip_solver=required_solvers[1],
                     nlp_solver=required_solvers[0],
                     absolute_bound_tolerance=1e-5,
+                )
+                log_infeasible_constraints(model)
+                self.assertTrue(is_feasible(model, self.get_config(opt)))
+
+    def test_FP_L1_norm(self):
+        """Test the feasibility pump algorithm."""
+        with SolverFactory('mindtpy') as opt:
+            for model in model_list:
+                model = model.clone()
+                results = opt.solve(
+                    model,
+                    strategy='FP',
+                    mip_solver=required_solvers[1],
+                    nlp_solver=required_solvers[0],
+                    absolute_bound_tolerance=1e-5,
+                    fp_main_norm='L1',
                 )
                 log_infeasible_constraints(model)
                 self.assertTrue(is_feasible(model, self.get_config(opt)))

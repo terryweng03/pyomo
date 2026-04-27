@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import logging
 from pyomo.contrib.mindtpy.config_options import _get_MindtPy_FP_config
@@ -44,15 +42,23 @@ class MindtPy_FP_Solver(_MindtPyAlgorithm):
         super().check_config()
 
     def initialize_mip_problem(self):
-        '''Deactivate the nonlinear constraints to create the MIP problem.'''
+        """Deactivate the nonlinear constraints to create the MIP problem."""
         super().initialize_mip_problem()
-        self.jacobians = calc_jacobians(self.mip, self.config)  # preload jacobians
+        self.jacobians = calc_jacobians(
+            self.mip.MindtPy_utils.nonlinear_constraint_list,
+            self.config.differentiate_mode,
+        )  # preload jacobians
         self.mip.MindtPy_utils.cuts.oa_cuts = ConstraintList(
             doc='Outer approximation cuts'
         )
 
     def add_cuts(
-        self, dual_values, linearize_active=True, linearize_violated=True, cb_opt=None
+        self,
+        dual_values,
+        linearize_active=True,
+        linearize_violated=True,
+        cb_opt=None,
+        nlp=None,
     ):
         add_oa_cuts(
             self.mip,

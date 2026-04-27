@@ -1,28 +1,28 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
-#  This module was originally developed as part of the IDAES PSE Framework
+# This module was originally developed as part of the IDAES PSE Framework
 #
-#  Institute for the Design of Advanced Energy Systems Process Systems
-#  Engineering Framework (IDAES PSE Framework) Copyright (c) 2018-2019, by the
-#  software owners: The Regents of the University of California, through
-#  Lawrence Berkeley National Laboratory,  National Technology & Engineering
-#  Solutions of Sandia, LLC, Carnegie Mellon University, West Virginia
-#  University Research Corporation, et al. All rights reserved.
+# Institute for the Design of Advanced Energy Systems Process Systems
+# Engineering Framework (IDAES PSE Framework) Copyright (c) 2018-2019, by the
+# software owners: The Regents of the University of California, through
+# Lawrence Berkeley National Laboratory,  National Technology & Engineering
+# Solutions of Sandia, LLC, Carnegie Mellon University, West Virginia
+# University Research Corporation, et al. All rights reserved.
 #
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """
 UI data objects for sharing data and settings between different parts of the UI.
 """
+
 __author__ = "John Eslick"
 
 import logging
@@ -33,22 +33,33 @@ import pyomo.environ as pyo
 _log = logging.getLogger(__name__)
 
 
-class UIDataNoUi(object):
+class UIDataNoUi:
     """
     This is the UIData object minus the signals.  This is the base class for
     UIData.  The class is split this way for testing when PyQt is not available.
     """
 
-    def __init__(self, model=None):
+    def __init__(self, model=None, model_var_name_in_main=None):
         """
         This class holds the basic UI setup, but doesn't depend on Qt. It
         shouldn't really be used except for testing when Qt is not available.
 
         Args:
             model: The Pyomo model to view
+            model_var_name_in_main: if this is set, check that the model variable
+                which points to a model object in __main__ has the same id when
+                the UI is refreshed due to a command being executed in jupyter
+                notebook or QtConsole, if not the same id, then update the model
+                Since the model viewer is not necessarily pointed at a model in the
+                __main__ namespace only set this if you want the model to auto
+                update.  Since the model selector dialog lets you choose models
+                from the __main__ namespace it sets this when you select a model.
+                This is useful if you run a script repeatedly that replaces a model
+                preventing you from looking at a previous version of the model.
         """
         super().__init__()
         self._model = None
+        self.model_var_name_in_main = model_var_name_in_main
         self._begin_update = False
         self.value_cache = ComponentMap()
         self.value_cache_units = ComponentMap()

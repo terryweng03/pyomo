@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import errno
 import os
@@ -32,11 +30,8 @@ def handleReadonly(function, path, excinfo):
 def build_cmake_project(
     targets, package_name=None, description=None, user_args=[], parallel=None
 ):
-    # Note: setuptools must be imported before distutils to avoid
-    # warnings / errors with recent setuptools distributions
-    from setuptools import Extension
-    import distutils.core
-    from distutils.command.build_ext import build_ext
+    from setuptools import Extension, Distribution
+    from setuptools.command.build_ext import build_ext
 
     class _CMakeBuild(build_ext, object):
         def run(self):
@@ -122,7 +117,7 @@ def build_cmake_project(
         'ext_modules': ext_modules,
         'cmdclass': {'build_ext': _CMakeBuild},
     }
-    dist = distutils.core.Distribution(package_config)
+    dist = Distribution(package_config)
     basedir = os.path.abspath(os.path.curdir)
     try:
         tmpdir = os.path.abspath(tempfile.mkdtemp())

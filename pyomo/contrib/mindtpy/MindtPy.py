@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """Implementation of the MindtPy solver.
 
@@ -50,6 +48,14 @@
 - Add single-tree implementation.
 - Add support for cplex_persistent solver.
 - Fix bug in OA cut expression in cut_generation.py.
+
+24.1.11 changes:
+- fix gurobi single tree termination check bug
+- fix Gurobi single tree cycle handling
+- fix bug in feasibility pump method
+- add special handling for infeasible relaxed NLP
+- update the log format of infeasible fixed NLP subproblems
+- create a new copy_var_list_values function
 """
 
 from pyomo.contrib.mindtpy import __version__
@@ -62,7 +68,7 @@ from pyomo.contrib.mindtpy.config_options import _supported_algorithms
 @SolverFactory.register(
     'mindtpy', doc='MindtPy: Mixed-Integer Nonlinear Decomposition Toolbox in Pyomo'
 )
-class MindtPySolver(object):
+class MindtPySolver:
     """
     Decomposition solver for Mixed-Integer Nonlinear Programming (MINLP) problems.
 

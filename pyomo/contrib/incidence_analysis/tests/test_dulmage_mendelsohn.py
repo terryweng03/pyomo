@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import pyomo.environ as pyo
 import pyomo.dae as dae
@@ -119,6 +117,27 @@ class TestGasExpansionDMMatrixInterface(unittest.TestCase):
         potentially_unmatched = col_partition[0] + col_partition[1]
         potentially_unmatched_set = set(range(len(variables)))
         self.assertEqual(set(potentially_unmatched), potentially_unmatched_set)
+
+    def test_recover_matching(self):
+        N_model = 4
+        m = make_gas_expansion_model(N_model)
+        variables = list(m.component_data_objects(pyo.Var))
+        constraints = list(m.component_data_objects(pyo.Constraint))
+        imat = get_structural_incidence_matrix(variables, constraints)
+        rdmp, cdmp = dulmage_mendelsohn(imat)
+        rmatch = rdmp.underconstrained + rdmp.square + rdmp.overconstrained
+        cmatch = cdmp.underconstrained + cdmp.square + cdmp.overconstrained
+        matching = list(zip(rmatch, cmatch))
+        rmatch = [r for (r, c) in matching]
+        cmatch = [c for (r, c) in matching]
+        # Assert that the matched rows and columns contain no duplicates
+        self.assertEqual(len(set(rmatch)), len(rmatch))
+        self.assertEqual(len(set(cmatch)), len(cmatch))
+        entry_set = set(zip(imat.row, imat.col))
+        for i, j in matching:
+            # Assert that each pair in the matching is a valid entry
+            # in the matrix
+            self.assertIn((i, j), entry_set)
 
 
 @unittest.skipUnless(networkx_available, "networkx is not available.")

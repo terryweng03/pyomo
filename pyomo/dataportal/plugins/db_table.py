@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import os.path
 import re
@@ -95,8 +93,7 @@ for the query:
 It is possible that you have an error in your external data file,
 the ODBC connector for this data source is not correctly installed,
 or that there is a bug in the ODBC connector.
-"""
-                % (self.filename, self.options.query)
+""" % (self.filename, self.options.query)
             )
             raise
         for row in rows:
@@ -385,8 +382,9 @@ class ODBCConfig:
         will override that in the file.
         """
 
-        # ugh hardcoded strings. See following URL for info:
-        # http://publib.boulder.ibm.com/infocenter/idshelp/v10/index.jsp?topic=/com.ibm.odbc.doc/odbc58.htm
+        # Hardcoded string required here.
+        # See documentation:
+        # https://www.ibm.com/docs/en/informix-servers/12.10?topic=SSGU8G_12.1.0/com.ibm.odbc.doc/ids_odbc_062.html
         self.ODBC_DS_KEY = 'ODBC Data Sources'
         self.ODBC_INFO_KEY = 'ODBC'
 

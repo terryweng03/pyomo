@@ -1,39 +1,37 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
-#  This module was originally developed as part of the IDAES PSE Framework
+# This module was originally developed as part of the IDAES PSE Framework
 #
-#  Institute for the Design of Advanced Energy Systems Process Systems
-#  Engineering Framework (IDAES PSE Framework) Copyright (c) 2018-2019, by the
-#  software owners: The Regents of the University of California, through
-#  Lawrence Berkeley National Laboratory,  National Technology & Engineering
-#  Solutions of Sandia, LLC, Carnegie Mellon University, West Virginia
-#  University Research Corporation, et al. All rights reserved.
+# Institute for the Design of Advanced Energy Systems Process Systems
+# Engineering Framework (IDAES PSE Framework) Copyright (c) 2018-2019, by the
+# software owners: The Regents of the University of California, through
+# Lawrence Berkeley National Laboratory,  National Technology & Engineering
+# Solutions of Sandia, LLC, Carnegie Mellon University, West Virginia
+# University Research Corporation, et al. All rights reserved.
 #
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """
 A simple GUI viewer/editor for Pyomo models.
 """
+
 __author__ = "John Eslick"
 
 import os
 import logging
 
-_log = logging.getLogger(__name__)
-
-import pyomo.contrib.viewer.qt as myqt
+from pyomo.common.fileutils import this_file_dir
+from pyomo.common.flags import building_documentation
 from pyomo.contrib.viewer.report import value_no_exception, get_residual
-
-from pyomo.core.base.param import _ParamData
+from pyomo.core.base.param import ParamData
 from pyomo.environ import (
     Block,
     BooleanVar,
@@ -44,19 +42,34 @@ from pyomo.environ import (
     value,
     units,
 )
-from pyomo.common.fileutils import this_file_dir
 
-mypath = this_file_dir()
-try:
-    _ModelBrowserUI, _ModelBrowser = myqt.uic.loadUiType(
-        os.path.join(mypath, "model_browser.ui")
-    )
-except:
-    # This lets the file still be imported, but you won't be able to use it
-    class _ModelBrowserUI(object):
-        pass
+import pyomo.contrib.viewer.qt as myqt
 
-    class _ModelBrowser(object):
+_log = logging.getLogger(__name__)
+
+
+# This lets the file be imported when the Qt UI is not available (or
+# when building docs), but you won't be able to use it
+class _ModelBrowserUI:
+    pass
+
+
+class _ModelBrowser:
+    pass
+
+
+# Note that the classes loaded here have signatures that are not
+# parsable by Sphinx, so we won't attempt to import them if we are
+# building the API documentation.
+if not building_documentation():
+    import sys
+
+    mypath = this_file_dir()
+    try:
+        _ModelBrowserUI, _ModelBrowser = myqt.uic.loadUiType(
+            os.path.join(mypath, "model_browser.ui")
+        )
+    except:
         pass
 
 
@@ -155,8 +168,12 @@ class ModelBrowser(_ModelBrowser, _ModelBrowserUI):
         self.treeView.setModel(datmodel)
         self.treeView.setColumnWidth(0, 400)
         # Selection behavior: select a whole row, can select multiple rows.
-        self.treeView.setSelectionBehavior(myqt.QAbstractItemView.SelectRows)
-        self.treeView.setSelectionMode(myqt.QAbstractItemView.ExtendedSelection)
+        self.treeView.setSelectionBehavior(
+            myqt.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.treeView.setSelectionMode(
+            myqt.QAbstractItemView.SelectionMode.ExtendedSelection
+        )
 
     def refresh(self):
         added = self.datmodel._update_tree()
@@ -166,7 +183,7 @@ class ModelBrowser(_ModelBrowser, _ModelBrowserUI):
         self.datmodel.update_model()
 
 
-class ComponentDataItem(object):
+class ComponentDataItem:
     """
     This is a container for a Pyomo component to be displayed in a model tree
     view.
@@ -243,7 +260,7 @@ class ComponentDataItem(object):
             return None
 
     def _get_value_callback(self):
-        if isinstance(self.data, _ParamData):
+        if isinstance(self.data, ParamData):
             v = value_no_exception(self.data, div0="divide_by_0")
             # Check the param value for numpy float and int, sometimes numpy
             # values can sneak in especially if you set parameters from data
@@ -295,7 +312,7 @@ class ComponentDataItem(object):
     def _get_units_callback(self):
         if isinstance(self.data, (Var, Var._ComponentDataClass)):
             return str(units.get_units(self.data))
-        if isinstance(self.data, (Param, _ParamData)):
+        if isinstance(self.data, (Param, ParamData)):
             return str(units.get_units(self.data))
         return self._cache_units
 
@@ -320,7 +337,7 @@ class ComponentDataItem(object):
                     o.value = val
             except:
                 return
-        elif isinstance(self.data, _ParamData):
+        elif isinstance(self.data, ParamData):
             if not self.data.parent_component().mutable:
                 return
             try:
@@ -582,9 +599,9 @@ class ComponentDataModel(myqt.QAbstractItemModel):
             if isinstance(
                 index.internalPointer().data, (Block, Block._ComponentDataClass)
             ):
-                return myqt.QColor(myqt.QtCore.Qt.black)
+                return myqt.QColor(myqt.QtCore.Qt.GlobalColor.black)
             else:
-                return myqt.QColor(myqt.QtCore.Qt.blue)
+                return myqt.QColor(myqt.QtCore.Qt.GlobalColor.blue)
         else:
             return
 

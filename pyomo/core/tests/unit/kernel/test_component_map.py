@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import collections.abc
 import pickle
@@ -232,6 +230,20 @@ class TestComponentMap(unittest.TestCase):
         self.assertNotEqual(cmap2, cmap1)
         self.assertFalse(cmap1 == cmap2)
         self.assertTrue(cmap1 != cmap2)
+        self.assertNotEqual(cmap1, cmap2)
+
+        cmap2 = ComponentMap(self._components)
+        o = objective()
+        cmap1[o] = 10
+        cmap2[o] = 10
+        self.assertEqual(cmap1, cmap2)
+        cmap2[o] = 20
+        self.assertNotEqual(cmap1, cmap2)
+        cmap2[o] = 10
+        self.assertEqual(cmap1, cmap2)
+        del cmap2[o]
+        self.assertNotEqual(cmap1, cmap2)
+        cmap2[objective()] = 10
         self.assertNotEqual(cmap1, cmap2)
 
 

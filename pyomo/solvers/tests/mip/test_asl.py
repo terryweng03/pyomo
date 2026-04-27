@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import json
 import os
@@ -47,9 +45,9 @@ class mock_all(unittest.TestCase):
     def setUpClass(cls):
         global cplexamp_available
         import pyomo.environ
-        from pyomo.solvers.tests.solvers import test_solver_cases
+        from pyomo.solvers.tests.solvers import test_solver_cases as _test_solver_cases
 
-        cplexamp_available = test_solver_cases('cplex', 'nl').available
+        cplexamp_available = _test_solver_cases('cplex', 'nl').available
 
     def setUp(self):
         self.do_setup(False)
@@ -79,6 +77,7 @@ class mock_all(unittest.TestCase):
         """Test ASL - test4.nl"""
         _log = TempfileManager.create_tempfile(".test_solve4.log")
         _out = TempfileManager.create_tempfile(".test_solve4.txt")
+        TempfileManager.add_tempfile(join(currdir, 'test4.soln'), exists=False)
 
         results = self.asl.solve(
             join(currdir, "test4.nl"), logfile=_log, suffixes=['.*']

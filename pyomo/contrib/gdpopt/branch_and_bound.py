@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from collections import namedtuple
 from heapq import heappush, heappop
@@ -92,15 +90,12 @@ class GDP_LBB_Solver(_GDPoptAlgorithm):
         return super().solve(model, **kwds)
 
     def _log_citation(self, config):
-        config.logger.info(
-            "\n"
-            + """- LBB algorithm:
+        config.logger.info("\n" + """- LBB algorithm:
         Lee, S; Grossmann, IE.
         New algorithms for nonlinear generalized disjunctive programming.
         Comp. and Chem. Eng. 2000, 24, 2125-2141.
         DOI: 10.1016/S0098-1354(00)00581-0.
-        """.strip()
-        )
+        """.strip())
 
     def _solve_gdp(self, model, config):
         self.explored_nodes = 0
@@ -179,13 +174,13 @@ class GDP_LBB_Solver(_GDPoptAlgorithm):
                     # TODO might be worthwhile to log number of nonlinear
                     # constraints in each disjunction for later branching
                     # purposes
-                    root_util_blk.disjunct_to_nonlinear_constraints[
-                        disjunct
-                    ] = nonlinear_constraints_in_disjunct
+                    root_util_blk.disjunct_to_nonlinear_constraints[disjunct] = (
+                        nonlinear_constraints_in_disjunct
+                    )
 
-            root_util_blk.disjunction_to_unfixed_disjuncts[
-                disjunction
-            ] = unfixed_disjuncts
+            root_util_blk.disjunction_to_unfixed_disjuncts[disjunction] = (
+                unfixed_disjuncts
+            )
             pass
 
         # Add the BigM suffix if it does not already exist. Used later during
@@ -230,12 +225,12 @@ class GDP_LBB_Solver(_GDPoptAlgorithm):
                 no_feasible_soln = float('inf')
                 self.LB = (
                     node_data.obj_lb
-                    if solve_data.objective_sense == minimize
+                    if self.objective_sense == minimize
                     else -no_feasible_soln
                 )
                 self.UB = (
                     no_feasible_soln
-                    if solve_data.objective_sense == minimize
+                    if self.objective_sense == minimize
                     else -node_data.obj_lb
                 )
                 config.logger.info(

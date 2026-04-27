@@ -1,6 +1,15 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 # gdp_uc.py
 import pyomo.environ as pyo
-from pyomo.gdp import *
+from pyomo.gdp import Disjunct, Disjunction
 
 model = pyo.AbstractModel()
 
@@ -105,3 +114,9 @@ def obj(m):
 @model.Constraint(model.GENERATORS)
 def nontrivial(m, g):
     return sum(m.Power[g, t] for t in m.TIME) >= len(m.TIME) / 2 * m.MinPower[g]
+
+
+@model.ConstraintList()
+def nondegenerate(m):
+    for i, g in enumerate(m.GENERATORS):
+        yield m.Power[g, i + 1] == 0

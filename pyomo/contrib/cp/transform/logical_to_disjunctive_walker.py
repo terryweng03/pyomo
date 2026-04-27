@@ -1,22 +1,16 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
-
-import collections
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.common.collections import ComponentMap
 from pyomo.common.errors import MouseTrap
 from pyomo.core.expr.expr_common import ExpressionType
 from pyomo.core.expr.visitor import StreamBasedExpressionVisitor
-from pyomo.core.expr.numeric_expr import NumericExpression
-from pyomo.core.expr.relational_expr import RelationalExpression
 import pyomo.core.expr as EXPR
 from pyomo.core.base import (
     Binary,
@@ -27,10 +21,14 @@ from pyomo.core.base import (
     value,
 )
 import pyomo.core.base.boolean_var as BV
-from pyomo.core.base.expression import ScalarExpression, _GeneralExpressionData
-from pyomo.core.base.param import ScalarParam, _ParamData
-from pyomo.core.base.var import ScalarVar, _GeneralVarData
+from pyomo.core.base.expression import ScalarExpression, ExpressionData
+from pyomo.core.base.param import ScalarParam, ParamData
+from pyomo.core.base.var import ScalarVar, VarData
 from pyomo.gdp.disjunct import AutoLinkedBooleanVar, Disjunct, Disjunction
+
+
+def _dispatch_boolean_const(visitor, node):
+    return False, 1 if node.value else 0
 
 
 def _dispatch_boolean_var(visitor, node):
@@ -55,14 +53,7 @@ def _dispatch_var(visitor, node):
 
 
 def _dispatch_param(visitor, node):
-    if int(value(node)) == value(node):
-        return False, node
-    else:
-        raise ValueError(
-            "Found non-integer valued Param '%s' in a logical "
-            "expression. This cannot be written to a disjunctive "
-            "form." % node.name
-        )
+    return False, node
 
 
 def _dispatch_expression(visitor, node):
@@ -208,16 +199,17 @@ _operator_dispatcher[EXPR.AtLeastExpression] = _dispatch_atleast
 _operator_dispatcher[EXPR.AtMostExpression] = _dispatch_atmost
 
 _before_child_dispatcher = {}
+_before_child_dispatcher[EXPR.BooleanConstant] = _dispatch_boolean_const
 _before_child_dispatcher[BV.ScalarBooleanVar] = _dispatch_boolean_var
-_before_child_dispatcher[BV._GeneralBooleanVarData] = _dispatch_boolean_var
+_before_child_dispatcher[BV.BooleanVarData] = _dispatch_boolean_var
 _before_child_dispatcher[AutoLinkedBooleanVar] = _dispatch_boolean_var
-_before_child_dispatcher[_ParamData] = _dispatch_param
+_before_child_dispatcher[ParamData] = _dispatch_param
 _before_child_dispatcher[ScalarParam] = _dispatch_param
 # for the moment, these are all just so we can get good error messages when we
 # don't handle them:
 _before_child_dispatcher[ScalarVar] = _dispatch_var
-_before_child_dispatcher[_GeneralVarData] = _dispatch_var
-_before_child_dispatcher[_GeneralExpressionData] = _dispatch_expression
+_before_child_dispatcher[VarData] = _dispatch_var
+_before_child_dispatcher[ExpressionData] = _dispatch_expression
 _before_child_dispatcher[ScalarExpression] = _dispatch_expression
 
 
@@ -248,6 +240,12 @@ class LogicalToDisjunctiveVisitor(StreamBasedExpressionVisitor):
 
     def beforeChild(self, node, child, child_idx):
         if child.__class__ in EXPR.native_types:
+            if child.__class__ is bool:
+                # If we encounter a bool, we are going to need to treat it as
+                # binary explicitly because we are finally pedantic enough in the
+                # expression system to not allow some of the mixing we will need
+                # (like summing a LinearExpression with a bool)
+                return False, int(child)
             return False, child
 
         if child.is_numeric_type():
@@ -269,5 +267,9 @@ class LogicalToDisjunctiveVisitor(StreamBasedExpressionVisitor):
         # This LogicalExpression must evaluate to True (but note that we cannot
         # fix this variable to 1 since this logical expression could be living
         # on a Disjunct and later need to be relaxed.)
-        self.constraints.add(result >= 1)
+        expr = result >= 1
+        if expr.__class__ is bool:
+            self.constraints.add(Constraint.Feasible if expr else Constraint.Infeasible)
+        else:
+            self.constraints.add(expr)
         return result

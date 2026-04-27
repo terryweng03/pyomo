@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
 # Unit Tests for Elements of a Model
 #
@@ -38,13 +36,14 @@ from pyomo.environ import (
     simple_constraint_rule,
     inequality,
 )
+from pyomo.common.log import LoggingIntercept
 from pyomo.core.expr import (
     SumExpression,
     EqualityExpression,
     InequalityExpression,
     RangedExpression,
 )
-from pyomo.core.base.constraint import _GeneralConstraintData
+from pyomo.core.base.constraint import ConstraintData
 
 
 class TestConstraintCreation(unittest.TestCase):
@@ -84,21 +83,55 @@ class TestConstraintCreation(unittest.TestCase):
         self.assertEqual(model.c.upper, 0)
 
     def test_tuple_construct_inf_equality(self):
-        model = self.create_model(abstract=True)
+        model = self.create_model(abstract=True).create_instance()
 
-        def rule(model):
-            return (model.x, float('inf'))
+        model.c = Constraint(expr=(model.x, float('inf')))
+        self.assertEqual(model.c.equality, True)
+        self.assertEqual(model.c.lower, float('inf'))
+        self.assertIs(model.c.body, model.x)
+        self.assertEqual(model.c.upper, float('inf'))
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'c' created with an invalid non-finite lower bound \(inf\).",
+        ):
+            model.c.lb
+        self.assertEqual(model.c.ub, None)
 
-        model.c = Constraint(rule=rule)
-        self.assertRaises(ValueError, model.create_instance)
+        model.d = Constraint(expr=(float('inf'), model.x))
+        self.assertEqual(model.d.equality, True)
+        self.assertEqual(model.d.lower, float('inf'))
+        self.assertIs(model.d.body, model.x)
+        self.assertEqual(model.d.upper, float('inf'))
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'd' created with an invalid non-finite lower bound \(inf\).",
+        ):
+            model.d.lb
+        self.assertEqual(model.d.ub, None)
 
-        model = self.create_model(abstract=True)
+        model.e = Constraint(expr=(model.x, float('-inf')))
+        self.assertEqual(model.e.equality, True)
+        self.assertEqual(model.e.lower, float('-inf'))
+        self.assertIs(model.e.body, model.x)
+        self.assertEqual(model.e.upper, float('-inf'))
+        self.assertEqual(model.e.lb, None)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'e' created with an invalid non-finite upper bound \(-inf\).",
+        ):
+            model.e.ub
 
-        def rule(model):
-            return (float('inf'), model.x)
-
-        model.c = Constraint(rule=rule)
-        self.assertRaises(ValueError, model.create_instance)
+        model.f = Constraint(expr=(float('-inf'), model.x))
+        self.assertEqual(model.f.equality, True)
+        self.assertEqual(model.f.lower, float('-inf'))
+        self.assertIs(model.f.body, model.x)
+        self.assertEqual(model.f.upper, float('-inf'))
+        self.assertEqual(model.f.lb, None)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'f' created with an invalid non-finite upper bound \(-inf\).",
+        ):
+            model.f.ub
 
     def test_tuple_construct_1sided_inequality(self):
         model = self.create_model()
@@ -134,9 +167,11 @@ class TestConstraintCreation(unittest.TestCase):
         model.c = Constraint(rule=rule)
 
         self.assertEqual(model.c.equality, False)
-        self.assertEqual(model.c.lower, None)
+        self.assertEqual(model.c.lower, float('-inf'))
         self.assertIs(model.c.body, model.y)
         self.assertEqual(model.c.upper, 1)
+        self.assertEqual(model.c.lb, None)
+        self.assertEqual(model.c.ub, 1)
 
         model = self.create_model()
 
@@ -148,20 +183,35 @@ class TestConstraintCreation(unittest.TestCase):
         self.assertEqual(model.c.equality, False)
         self.assertEqual(model.c.lower, 0)
         self.assertIs(model.c.body, model.y)
-        self.assertEqual(model.c.upper, None)
+        self.assertEqual(model.c.upper, float('inf'))
+        self.assertEqual(model.c.lb, 0)
+        self.assertEqual(model.c.ub, None)
 
     def test_tuple_construct_unbounded_inequality(self):
         model = self.create_model()
 
+        # Note: inequality with only a single non-None returns the non-None value
+
         def rule(model):
             return (None, model.y, None)
 
-        model.c = Constraint(rule=rule)
+        with self.assertRaisesRegex(
+            ValueError,
+            "Constraint 'c' does not have a proper value. Found ScalarVar 'y'",
+        ):
+            model.c = Constraint(rule=rule)
 
-        self.assertEqual(model.c.equality, False)
-        self.assertEqual(model.c.lower, None)
-        self.assertIs(model.c.body, model.y)
-        self.assertEqual(model.c.upper, None)
+        with self.assertRaisesRegex(
+            ValueError,
+            "Constraint 'c' does not have a proper value. Found ScalarVar 'y'",
+        ):
+            model.c = (model.y, None, None)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Constraint 'c' does not have a proper value. Found ScalarVar 'y'",
+        ):
+            model.c = (None, None, model.y)
 
         model = self.create_model()
 
@@ -171,9 +221,11 @@ class TestConstraintCreation(unittest.TestCase):
         model.c = Constraint(rule=rule)
 
         self.assertEqual(model.c.equality, False)
-        self.assertEqual(model.c.lower, None)
+        self.assertEqual(model.c.lower, float('-inf'))
         self.assertIs(model.c.body, model.y)
-        self.assertEqual(model.c.upper, None)
+        self.assertEqual(model.c.upper, float('inf'))
+        self.assertEqual(model.c.lb, None)
+        self.assertEqual(model.c.ub, None)
 
     def test_tuple_construct_invalid_1sided_inequality(self):
         model = self.create_model(abstract=True)
@@ -215,6 +267,44 @@ class TestConstraintCreation(unittest.TestCase):
         self.assertIs(model.c.body, model.y)
         self.assertEqual(model.c.upper, 1)
 
+        def rule(model):
+            return (float(0), model.y, float(0))
+
+        model.d = Constraint(rule=rule)
+
+        self.assertEqual(model.d.equality, True)
+        self.assertEqual(model.d.lower, 0)
+        self.assertIs(model.d.body, model.y)
+        self.assertEqual(model.d.upper, 0)
+
+        model.p = Param(mutable=True)
+        e = model.p * 2 + 1
+
+        def rule(model):
+            return (e, model.y, e)
+
+        model.e = Constraint(rule=rule)
+
+        self.assertEqual(model.e.equality, True)
+        self.assertIs(model.e.lower, e)
+        self.assertIs(model.e.body, model.y)
+        self.assertIs(model.e.upper, e)
+
+        #
+        # Note: because we do not test for symbolic equivalence, the
+        # following will be seen as a ranged inequality and not an
+        # equality:
+        #
+        def rule(model):
+            return (e, model.y, model.p * 2 + 1)
+
+        model.f = Constraint(rule=rule)
+
+        self.assertEqual(model.f.equality, False)
+        self.assertIs(model.f.lower, e)
+        self.assertIs(model.f.body, model.y)
+        self.assertIsNot(model.f.upper, e)
+
     def test_tuple_construct_invalid_2sided_inequality(self):
         model = self.create_model(abstract=True)
 
@@ -229,7 +319,11 @@ class TestConstraintCreation(unittest.TestCase):
         ):
             instance.c.lower
         self.assertIs(instance.c.body, instance.y)
-        self.assertEqual(instance.c.upper, 1)
+        with self.assertRaisesRegex(
+            ValueError,
+            "Constraint 'c' is a Ranged Inequality with a variable lower bound",
+        ):
+            instance.c.upper
         instance.x.fix(3)
         self.assertEqual(value(instance.c.lower), 3)
 
@@ -240,7 +334,11 @@ class TestConstraintCreation(unittest.TestCase):
 
         model.c = Constraint(rule=rule)
         instance = model.create_instance()
-        self.assertEqual(instance.c.lower, 0)
+        with self.assertRaisesRegex(
+            ValueError,
+            "Constraint 'c' is a Ranged Inequality with a variable upper bound",
+        ):
+            instance.c.lower
         self.assertIs(instance.c.body, instance.y)
         with self.assertRaisesRegex(
             ValueError,
@@ -276,21 +374,23 @@ class TestConstraintCreation(unittest.TestCase):
         self.assertEqual(model.c.upper, 0)
 
     def test_expr_construct_inf_equality(self):
-        model = self.create_model(abstract=True)
+        model = self.create_model(abstract=True).create_instance()
 
-        def rule(model):
-            return model.x == float('inf')
+        model.c = Constraint(expr=model.x == float('inf'))
+        self.assertEqual(model.c.ub, None)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'c' created with an invalid non-finite lower bound \(inf\).",
+        ):
+            model.c.lb
 
-        model.c = Constraint(rule=rule)
-        self.assertRaises(ValueError, model.create_instance)
-
-        model = self.create_model(abstract=True)
-
-        def rule(model):
-            return float('inf') == model.x
-
-        model.c = Constraint(rule=rule)
-        self.assertRaises(ValueError, model.create_instance)
+        model.d = Constraint(expr=model.x == float('-inf'))
+        self.assertEqual(model.d.lb, None)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'd' created with an invalid non-finite upper bound \(-inf\).",
+        ):
+            model.d.ub
 
     def test_expr_construct_1sided_inequality(self):
         model = self.create_model()
@@ -350,9 +450,11 @@ class TestConstraintCreation(unittest.TestCase):
         model.c = Constraint(rule=rule)
 
         self.assertEqual(model.c.equality, False)
-        self.assertEqual(model.c.lower, None)
+        self.assertIs(model.c.lower, None)
         self.assertIs(model.c.body, model.y)
-        self.assertEqual(model.c.upper, None)
+        self.assertEqual(model.c.upper, float('inf'))
+        self.assertIs(model.c.ub, None)
+        self.assertIs(model.c.lb, None)
 
         model = self.create_model()
 
@@ -362,9 +464,11 @@ class TestConstraintCreation(unittest.TestCase):
         model.c = Constraint(rule=rule)
 
         self.assertEqual(model.c.equality, False)
-        self.assertEqual(model.c.lower, None)
+        self.assertEqual(model.c.lower, float('-inf'))
         self.assertIs(model.c.body, model.y)
         self.assertEqual(model.c.upper, None)
+        self.assertIs(model.c.ub, None)
+        self.assertIs(model.c.lb, None)
 
         model = self.create_model()
 
@@ -374,9 +478,11 @@ class TestConstraintCreation(unittest.TestCase):
         model.c = Constraint(rule=rule)
 
         self.assertEqual(model.c.equality, False)
-        self.assertEqual(model.c.lower, None)
+        self.assertEqual(model.c.lower, float('-inf'))
         self.assertIs(model.c.body, model.y)
         self.assertEqual(model.c.upper, None)
+        self.assertIs(model.c.ub, None)
+        self.assertIs(model.c.lb, None)
 
         model = self.create_model()
 
@@ -388,40 +494,40 @@ class TestConstraintCreation(unittest.TestCase):
         self.assertEqual(model.c.equality, False)
         self.assertEqual(model.c.lower, None)
         self.assertIs(model.c.body, model.y)
-        self.assertEqual(model.c.upper, None)
+        self.assertEqual(model.c.upper, float('inf'))
+        self.assertIs(model.c.ub, None)
+        self.assertIs(model.c.lb, None)
 
     def test_expr_construct_invalid_unbounded_inequality(self):
-        model = self.create_model(abstract=True)
+        model = self.create_model(abstract=True).create_instance()
 
-        def rule(model):
-            return model.y <= float('-inf')
+        model.c = Constraint(expr=model.y <= float('-inf'))
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'c' created with an invalid non-finite upper bound \(-inf\).",
+        ):
+            model.c.ub
 
-        model.c = Constraint(rule=rule)
-        self.assertRaises(ValueError, model.create_instance)
+        model.d = Constraint(expr=float('inf') <= model.y)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'd' created with an invalid non-finite lower bound \(inf\).",
+        ):
+            model.d.lb
 
-        model = self.create_model(abstract=True)
+        model.e = Constraint(expr=model.y >= float('inf'))
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'e' created with an invalid non-finite lower bound \(inf\).",
+        ):
+            model.e.lb
 
-        def rule(model):
-            return float('inf') <= model.y
-
-        model.c = Constraint(rule=rule)
-        self.assertRaises(ValueError, model.create_instance)
-
-        model = self.create_model(abstract=True)
-
-        def rule(model):
-            return model.y >= float('inf')
-
-        model.c = Constraint(rule=rule)
-        self.assertRaises(ValueError, model.create_instance)
-
-        model = self.create_model(abstract=True)
-
-        def rule(model):
-            return float('-inf') >= model.y
-
-        model.c = Constraint(rule=rule)
-        self.assertRaises(ValueError, model.create_instance)
+        model.f = Constraint(expr=float('-inf') >= model.y)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'f' created with an invalid non-finite upper bound \(-inf\).",
+        ):
+            model.f.ub
 
     def test_expr_construct_invalid(self):
         m = ConcreteModel()
@@ -484,9 +590,6 @@ class TestConstraintCreation(unittest.TestCase):
         model.e2 = Expression()
         model.e3 = Expression()
         model.c.set_value((model.e1, model.e2, model.e3))
-        self.assertIsNone(model.c._lower)
-        self.assertIsNone(model.c._body)
-        self.assertIsNone(model.c._upper)
         self.assertIs(model.c.lower, model.e1)
         self.assertIs(model.c.body, model.e2)
         self.assertIs(model.c.upper, model.e3)
@@ -507,7 +610,7 @@ class TestConstraintCreation(unittest.TestCase):
         self.assertIs(model.c.body.expr, model.v[2])
         with self.assertRaisesRegex(
             ValueError,
-            "Constraint 'c' is a Ranged Inequality with a variable upper bound",
+            "Constraint 'c' is a Ranged Inequality with a variable lower bound",
         ):
             model.c.upper
 
@@ -763,7 +866,7 @@ class TestSimpleCon(unittest.TestCase):
         model.c = Constraint(expr=ans)
 
         with self.assertRaisesRegex(
-            ValueError, "No value for uninitialized NumericValue object x"
+            ValueError, "No value for uninitialized ScalarVar object x"
         ):
             value(model.c)
         model.x = 2
@@ -1074,7 +1177,7 @@ class TestArrayCon(unittest.TestCase):
         m.c[2] = m.x**2 <= 4
         self.assertEqual(len(m.c), 1)
         self.assertEqual(list(m.c.keys()), [2])
-        self.assertIsInstance(m.c[2], _GeneralConstraintData)
+        self.assertIsInstance(m.c[2], ConstraintData)
         self.assertEqual(m.c[2].upper, 4)
 
         m.c[3] = Constraint.Skip
@@ -1322,26 +1425,59 @@ class Test2DArrayCon(unittest.TestCase):
 class MiscConTests(unittest.TestCase):
     def test_infeasible(self):
         m = ConcreteModel()
-        with self.assertRaisesRegex(ValueError, "Constraint 'c' is always infeasible"):
-            m.c = Constraint(expr=Constraint.Infeasible)
-        self.assertEqual(m.c._data, {})
+        m.x = Var()
+        m.c = Constraint(expr=Constraint.Infeasible)
+        self.assertIn(None, m.c._data)
+        self.assertEqual(m.c.lb, None)
+        self.assertEqual(m.c.body, 1)
+        self.assertEqual(m.c.ub, 0)
 
-        with self.assertRaisesRegex(ValueError, "Constraint 'c' is always infeasible"):
-            m.c = Constraint.Infeasible
-        self.assertEqual(m.c._data, {})
-        self.assertIsNone(m.c.expr)
+        with self.assertRaisesRegex(
+            ValueError,
+            "Invalid constraint expression. The constraint expression resolved "
+            r"to a trivial Boolean \(True\) instead of a Pyomo object.",
+        ):
+            m.c = (0, 1, 2)
 
-        m.c = (0, 1, 2)
+        m.c = (0, m.x, 2)
         self.assertIn(None, m.c._data)
         self.assertEqual(m.c.lb, 0)
+        self.assertEqual(m.c.body, m.x)
         self.assertEqual(m.c.ub, 2)
 
-        with self.assertRaisesRegex(ValueError, "Constraint 'c' is always infeasible"):
-            m.c = Constraint.Infeasible
-        self.assertEqual(m.c._data, {})
-        self.assertIsNone(m.c.expr)
+        m.c = Constraint.Infeasible
+        self.assertIn(None, m.c._data)
         self.assertEqual(m.c.lb, None)
-        self.assertEqual(m.c.ub, None)
+        self.assertEqual(m.c.body, 1)
+        self.assertEqual(m.c.ub, 0)
+
+    def test_feasible(self):
+        m = ConcreteModel()
+        m.x = Var()
+        m.c = Constraint(expr=Constraint.Feasible)
+        self.assertIn(None, m.c._data)
+        self.assertEqual(m.c.lb, None)
+        self.assertEqual(m.c.body, 0)
+        self.assertEqual(m.c.ub, 0)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Invalid constraint expression. The constraint expression resolved "
+            r"to a trivial Boolean \(True\) instead of a Pyomo object.",
+        ):
+            m.c = (0, 1, 2)
+
+        m.c = (0, m.x, 2)
+        self.assertIn(None, m.c._data)
+        self.assertEqual(m.c.lb, 0)
+        self.assertEqual(m.c.body, m.x)
+        self.assertEqual(m.c.ub, 2)
+
+        m.c = Constraint.Feasible
+        self.assertIn(None, m.c._data)
+        self.assertEqual(m.c.lb, None)
+        self.assertEqual(m.c.body, 0)
+        self.assertEqual(m.c.ub, 0)
 
     def test_slack_methods(self):
         model = ConcreteModel()
@@ -1388,7 +1524,7 @@ class MiscConTests(unittest.TestCase):
         # Even though we construct a ScalarConstraint,
         # if it is not initialized that means it is "empty"
         # and we should encounter errors when trying to access the
-        # _ConstraintData interface methods until we assign
+        # ConstraintData interface methods until we assign
         # something to the constraint.
         #
         self.assertEqual(a._constructed, True)
@@ -1500,6 +1636,26 @@ class MiscConTests(unittest.TestCase):
         self.assertEqual(a.strict_lower, False)
         self.assertEqual(a.strict_upper, False)
 
+    def test_deprecated_rule_attribute(self):
+        def rule(m):
+            return m.x <= 0
+
+        def new_rule(m):
+            return m.x >= 0
+
+        m = ConcreteModel()
+        m.x = Var()
+        m.con = Constraint(rule=rule)
+
+        self.assertIs(m.con.rule._fcn, rule)
+        with LoggingIntercept() as LOG:
+            m.con.rule = new_rule
+        self.assertIn(
+            "DEPRECATED: The 'Constraint.rule' attribute will be made read-only",
+            LOG.getvalue(),
+        )
+        self.assertIs(m.con.rule, new_rule)
+
     def test_rule(self):
         def rule1(model):
             return Constraint.Skip
@@ -1543,6 +1699,16 @@ class MiscConTests(unittest.TestCase):
         except ValueError:
             pass
 
+    def test_rule_kwargs(self):
+        m = ConcreteModel()
+        m.x = Var()
+
+        @m.Constraint(rhs=5)
+        def c(m, *, rhs):
+            return m.x <= rhs
+
+        self.assertExpressionsEqual(m.c.expr, m.x <= 5)
+
     def test_tuple_constraint_create(self):
         def rule1(model):
             return (0.0, model.x)
@@ -1574,10 +1740,30 @@ class MiscConTests(unittest.TestCase):
         self.assertIs(instance.c.body, instance.x)
         with self.assertRaisesRegex(
             ValueError,
+            "Constraint 'c' is a Ranged Inequality with a variable lower bound",
+        ):
+            instance.c.upper
+
+        #
+        def rule1(model):
+            return (0, model.x, model.z)
+
+        model = AbstractModel()
+        model.x = Var()
+        model.z = Var()
+        model.c = Constraint(rule=rule1)
+        instance = model.create_instance()
+        with self.assertRaisesRegex(
+            ValueError,
+            "Constraint 'c' is a Ranged Inequality with a variable upper bound",
+        ):
+            instance.c.lower
+        self.assertIs(instance.c.body, instance.x)
+        with self.assertRaisesRegex(
+            ValueError,
             "Constraint 'c' is a Ranged Inequality with a variable upper bound",
         ):
             instance.c.upper
-        #
 
     def test_expression_constructor_coverage(self):
         def rule1(model):
@@ -1687,7 +1873,11 @@ class MiscConTests(unittest.TestCase):
         model.x = Var()
         model.L = Param(initialize=0)
         model.U = Param(initialize=1)
-        model.o = Constraint(rule=rule1)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"The constraint expression resolved to a trivial Boolean \(False\)",
+        ):
+            model.o = Constraint(rule=rule1)
 
         #
         def rule1(model):
@@ -1786,11 +1976,11 @@ class MiscConTests(unittest.TestCase):
         self.assertIs(m.c.lower, m.l)
         self.assertIs(m.c.upper, m.u)
         with self.assertRaisesRegex(
-            ValueError, 'No value for uninitialized NumericValue object l'
+            ValueError, 'No value for uninitialized ScalarExpression object l'
         ):
             m.c.lb
         with self.assertRaisesRegex(
-            ValueError, 'No value for uninitialized NumericValue object u'
+            ValueError, 'No value for uninitialized ScalarExpression object u'
         ):
             m.c.ub
 
@@ -1807,23 +1997,39 @@ class MiscConTests(unittest.TestCase):
             r"Constraint 'c' is a Ranged Inequality with a variable lower bound",
         ):
             m.c.lower
-        self.assertIs(m.c.upper, m.u)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'c' is a Ranged Inequality with a variable lower bound",
+        ):
+            self.assertIs(m.c.upper, m.u)
         with self.assertRaisesRegex(
             ValueError,
             r"Constraint 'c' is a Ranged Inequality with a variable lower bound",
         ):
             m.c.lb
-        self.assertEqual(m.c.ub, 10)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'c' is a Ranged Inequality with a variable lower bound",
+        ):
+            self.assertEqual(m.c.ub, 10)
 
         m.l = 15
         m.u.expr = m.x
-        self.assertIs(m.c.lower, m.l)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'c' is a Ranged Inequality with a variable upper bound",
+        ):
+            self.assertIs(m.c.lower, m.l)
         with self.assertRaisesRegex(
             ValueError,
             r"Constraint 'c' is a Ranged Inequality with a variable upper bound",
         ):
             m.c.upper
-        self.assertEqual(m.c.lb, 15)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Constraint 'c' is a Ranged Inequality with a variable upper bound",
+        ):
+            self.assertEqual(m.c.lb, 15)
         with self.assertRaisesRegex(
             ValueError,
             r"Constraint 'c' is a Ranged Inequality with a variable upper bound",
@@ -1884,23 +2090,21 @@ class MiscConTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             ValueError,
-            "Constraint 'c' does not have a proper value. "
-            "Equality Constraints expressed as 2-tuples cannot "
-            "contain None",
+            "Cannot create EqualityExpression from argument types "
+            "'ScalarVar' and 'NoneType'",
         ):
             m.c = (m.x, None)
 
+        # You can create it with an infinite value, but then one of the
+        # bounds will fail:
+        m.c = (m.x, float('inf'))
+        self.assertIsNone(m.c.ub)
         with self.assertRaisesRegex(
             ValueError,
             r"Constraint 'c' created with an invalid "
             r"non-finite lower bound \(inf\)",
         ):
-            m.c = (m.x, float('inf'))
-
-        with self.assertRaisesRegex(
-            ValueError, r"Equality constraint 'c' defined with non-finite term"
-        ):
-            m.c = EqualityExpression((m.x, None))
+            m.c.lb
 
 
 if __name__ == "__main__":

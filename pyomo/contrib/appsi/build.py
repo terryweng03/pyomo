@@ -1,28 +1,17 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import shutil
 import glob
 import os
 import sys
 import tempfile
-
-
-def handleReadonly(function, path, excinfo):
-    excvalue = excinfo[1]
-    if excvalue.errno == errno.EACCES:
-        os.chmod(path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)  # 0777
-        function(path)
-    else:
-        raise
 
 
 def get_appsi_extension(in_setup=False, appsi_root=None):
@@ -63,10 +52,10 @@ def get_appsi_extension(in_setup=False, appsi_root=None):
 
 def build_appsi(args=[]):
     print('\n\n**** Building APPSI ****')
-    import setuptools
-    from distutils.dist import Distribution
+    from setuptools import Distribution
     from pybind11.setup_helpers import build_ext
     import pybind11.setup_helpers
+    from pyomo.common.cmake_builder import handleReadonly
     from pyomo.common.envvar import PYOMO_CONFIG_DIR
     from pyomo.common.fileutils import this_file_dir
 
@@ -117,7 +106,7 @@ def build_appsi(args=[]):
         pybind11.setup_helpers.MACOS = original_pybind11_setup_helpers_macos
 
 
-class AppsiBuilder(object):
+class AppsiBuilder:
     def __call__(self, parallel):
         return build_appsi()
 

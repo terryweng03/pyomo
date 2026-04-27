@@ -1,15 +1,14 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """Tests for the MindtPy solver."""
+
 from pyomo.core.expr.calculus.diff_with_sympy import differentiate_available
 import pyomo.common.unittest as unittest
 from pyomo.contrib.mindtpy.tests.eight_process_problem import EightProcessFlowsheet
@@ -27,7 +26,6 @@ from pyomo.environ import SolverFactory, value, maximize
 from pyomo.solvers.tests.models.LP_unbounded import LP_unbounded
 from pyomo.solvers.tests.models.QCP_simple import QCP_simple
 from pyomo.opt import TerminationCondition
-
 
 full_model_list = [
     EightProcessFlowsheet(convex=True),
@@ -56,7 +54,12 @@ QCP_model = QCP_simple()
 QCP_model._generate_model()
 extreme_model_list = [LP_model.model, QCP_model.model]
 
-required_solvers = ('ipopt', 'glpk')
+if SolverFactory('appsi_highs').available(exception_flag=False) and SolverFactory(
+    'appsi_highs'
+).version() >= (1, 7, 0):
+    required_solvers = ('ipopt', 'appsi_highs')
+else:
+    required_solvers = ('ipopt', 'glpk')
 if all(SolverFactory(s).available(exception_flag=False) for s in required_solvers):
     subsolvers_available = True
 else:
@@ -100,6 +103,30 @@ class TestMindtPy(unittest.TestCase):
                     value(model.objective.expr), model.optimal_value, places=1
                 )
                 self.check_optimal_solution(model)
+
+    def test_OA_callback(self):
+        """Test the outer approximation decomposition algorithm."""
+        with SolverFactory('mindtpy') as opt:
+
+            def callback(model):
+                model.Y[1].value = 0
+                model.Y[2].value = 0
+                model.Y[3].value = 0
+
+            model = SimpleMINLP2()
+            # The callback function will make the OA method cycling.
+            results = opt.solve(
+                model,
+                strategy='OA',
+                init_strategy='rNLP',
+                mip_solver=required_solvers[1],
+                nlp_solver=required_solvers[0],
+                call_before_subproblem_solve=callback,
+            )
+            self.assertIs(
+                results.solver.termination_condition, TerminationCondition.feasible
+            )
+            self.assertAlmostEqual(value(results.problem.lower_bound), 5, places=1)
 
     def test_OA_extreme_model(self):
         """Test the outer approximation decomposition algorithm."""
@@ -327,6 +354,7 @@ class TestMindtPy(unittest.TestCase):
                     value(model.objective.expr), model.optimal_value, places=1
                 )
 
+    # CYIPOPT will raise WARNING (W1002) during loading solution.
     @unittest.skipUnless(
         SolverFactory('cyipopt').available(exception_flag=False),
         "APPSI_IPOPT not available.",

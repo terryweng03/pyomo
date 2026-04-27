@@ -1,22 +1,29 @@
+# temporary editor files
+*~
+.#*
+\#*#
+
 # IDE configuration files
 .idea
 .spyder*
 .ropeproject
 .vscode
+
 # Python generates numerous files when byte compiling / installing packages
+__pycache__/
 *.pyx
-*.pyc
-*.pyo
-*.egg-info
+*.py[cod]
+*.egg-info/
 
 # Documentation builds
+doc/OnlineDocs/api
 doc/OnlineDocs/_build
 doc/OnlineDocs/**/*.spy
 
 # Running pyomo / tests / solvers occasionally leaves extra files
 *.out
-pyomo/dataportal/parse_table_datacmds.py
 gurobi.log
+cplex.log
 
 # Results from pytest --with-coverage
 .coverage
@@ -24,4 +31,6 @@ gurobi.log
 
 # Jupyterhub/Jupyterlab checkpoints
 .ipynb_checkpoints
-cplex.log
+
+# Mac tracking files
+*.DS_Store*

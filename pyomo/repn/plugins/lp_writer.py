@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import logging
 from io import StringIO
@@ -19,6 +17,7 @@ from pyomo.common.config import (
     InEnum,
     document_kwargs_from_configdict,
 )
+from pyomo.common.deprecation import deprecation_warning
 from pyomo.common.gc_manager import PauseGC
 from pyomo.common.timing import TicTocTimer
 
@@ -30,12 +29,10 @@ from pyomo.core.base import (
     Param,
     Expression,
     SOSConstraint,
-    SortComponents,
     Suffix,
     SymbolMap,
     minimize,
 )
-from pyomo.core.base.component import ActiveComponent
 from pyomo.core.base.label import LPFileLabeler, NumericLabeler
 from pyomo.opt import WriterFactory
 from pyomo.repn.linear import LinearRepnVisitor
@@ -43,10 +40,12 @@ from pyomo.repn.quadratic import QuadraticRepnVisitor
 from pyomo.repn.util import (
     FileDeterminism,
     FileDeterminism_to_SortComponents,
+    OrderedVarRecorder,
     categorize_valid_components,
     initialize_var_map_from_column_order,
     int_float,
     ordered_active_constraints,
+    row_order2row_map,
 )
 
 ### FIXME: Remove the following as soon as non-active components no
@@ -60,7 +59,7 @@ neg_inf = float('-inf')
 
 
 # TODO: make a proper base class
-class LPWriterInfo(object):
+class LPWriterInfo:
     """Return type for LPWriter.write()
 
     Attributes
@@ -80,7 +79,7 @@ class LPWriterInfo(object):
     'cpxlp_v2', 'Generate the corresponding CPLEX LP file (version 2).'
 )
 @WriterFactory.register('lp_v2', 'Generate the corresponding LP file (version 2).')
-class LPWriter(object):
+class LPWriter:
     CONFIG = ConfigBlock('lpwriter')
     CONFIG.declare(
         'show_section_timing',
@@ -107,10 +106,12 @@ class LPWriter(object):
             doc="""
             How much effort do we want to put into ensuring the
             LP file is written deterministically for a Pyomo model:
-                NONE (0) : None
-                ORDERED (10): rely on underlying component ordering (default)
-                SORT_INDICES (20) : sort keys of indexed components
-                SORT_SYMBOLS (30) : sort keys AND sort names (not declaration order)
+
+               - NONE (0) : None
+               - ORDERED (10): rely on underlying component ordering (default)
+               - SORT_INDICES (20) : sort keys of indexed components
+               - SORT_SYMBOLS (30) : sort keys AND sort names (not declaration order)
+
             """,
         ),
     )
@@ -142,8 +143,6 @@ class LPWriter(object):
             default=None,
             description='Preferred variable ordering',
             doc="""
-
-
             List of variables in the order that they should appear in
             the LP file.  Note that this is only a suggestion, as the LP
             file format is row-major and the columns are inferred from
@@ -241,7 +240,7 @@ class LPWriter(object):
             return _LPWriter_impl(ostream, config).write(model)
 
 
-class _LPWriter_impl(object):
+class _LPWriter_impl:
     def __init__(self, ostream, config):
         self.ostream = ostream
         self.config = config
@@ -267,7 +266,9 @@ class _LPWriter_impl(object):
         aliasSymbol = self.symbol_map.alias
         getSymbol = self.symbol_map.getSymbol
 
-        sorter = FileDeterminism_to_SortComponents(self.config.file_determinism)
+        self.sorter = sorter = FileDeterminism_to_SortComponents(
+            self.config.file_determinism
+        )
         component_map, unknown = categorize_valid_components(
             model,
             active=True,
@@ -303,19 +304,19 @@ class _LPWriter_impl(object):
         ONE_VAR_CONSTANT = Var(name='ONE_VAR_CONSTANT', bounds=(1, 1))
         ONE_VAR_CONSTANT.construct()
 
-        self.var_map = var_map = {id(ONE_VAR_CONSTANT): ONE_VAR_CONSTANT}
-        initialize_var_map_from_column_order(model, self.config, var_map)
-        self.var_order = {_id: i for i, _id in enumerate(var_map)}
+        self.var_map = {id(ONE_VAR_CONSTANT): ONE_VAR_CONSTANT}
+        initialize_var_map_from_column_order(model, self.config, self.var_map)
+        self.var_order = {_id: i for i, _id in enumerate(self.var_map)}
+        self.var_recorder = OrderedVarRecorder(self.var_map, self.var_order, sorter)
 
         _qp = self.config.allow_quadratic_objective
         _qc = self.config.allow_quadratic_constraint
         objective_visitor = (QuadraticRepnVisitor if _qp else LinearRepnVisitor)(
-            {}, var_map, self.var_order
+            {}, var_recorder=self.var_recorder
         )
         constraint_visitor = (QuadraticRepnVisitor if _qc else LinearRepnVisitor)(
             objective_visitor.subexpression_cache if _qp == _qc else {},
-            var_map,
-            self.var_order,
+            var_recorder=self.var_recorder,
         )
 
         timer.toc('Initialized column order', level=logging.DEBUG)
@@ -407,10 +408,10 @@ class _LPWriter_impl(object):
             if with_debug_timing and con.parent_component() is not last_parent:
                 timer.toc('Constraint %s', last_parent, level=logging.DEBUG)
                 last_parent = con.parent_component()
-            # Note: Constraint.lb/ub guarantee a return value that is
-            # either a (finite) native_numeric_type, or None
-            lb = con.lb
-            ub = con.ub
+            # Note: Constraint.to_bounded_expression(evaluate_bounds=True)
+            # guarantee a return value that is either a (finite)
+            # native_numeric_type, or None
+            lb, body, ub = con.to_bounded_expression(True)
 
             if lb is None and ub is None:
                 # Note: you *cannot* output trivial (unbounded)
@@ -418,7 +419,7 @@ class _LPWriter_impl(object):
                 # slack variable if skip_trivial_constraints is False,
                 # but that seems rather silly.
                 continue
-            repn = constraint_visitor.walk_expression(con.body)
+            repn = constraint_visitor.walk_expression(body)
             if repn.nonlinear is not None:
                 raise ValueError(
                     f"Model constraint ({con.name}) contains nonlinear terms that "
@@ -457,13 +458,13 @@ class _LPWriter_impl(object):
                     addSymbol(con, label)
                     ostream.write(f'\n{label}:\n')
                     self.write_expression(ostream, repn, False)
-                    ostream.write(f'>= {(lb - offset)!r}\n')
+                    ostream.write(f'>= {(lb - offset)!s}\n')
                 elif lb == ub:
                     label = f'c_e_{symbol}_'
                     addSymbol(con, label)
                     ostream.write(f'\n{label}:\n')
                     self.write_expression(ostream, repn, False)
-                    ostream.write(f'= {(lb - offset)!r}\n')
+                    ostream.write(f'= {(lb - offset)!s}\n')
                 else:
                     # We will need the constraint body twice.  Generate
                     # in a buffer so we only have to do that once.
@@ -475,18 +476,18 @@ class _LPWriter_impl(object):
                     addSymbol(con, label)
                     ostream.write(f'\n{label}:\n')
                     ostream.write(buf)
-                    ostream.write(f'>= {(lb - offset)!r}\n')
+                    ostream.write(f'>= {(lb - offset)!s}\n')
                     label = f'r_u_{symbol}_'
                     aliasSymbol(con, label)
                     ostream.write(f'\n{label}:\n')
                     ostream.write(buf)
-                    ostream.write(f'<= {(ub - offset)!r}\n')
+                    ostream.write(f'<= {(ub - offset)!s}\n')
             elif ub is not None:
                 label = f'c_u_{symbol}_'
                 addSymbol(con, label)
                 ostream.write(f'\n{label}:\n')
                 self.write_expression(ostream, repn, False)
-                ostream.write(f'<= {(ub - offset)!r}\n')
+                ostream.write(f'<= {(ub - offset)!s}\n')
 
         if with_debug_timing:
             # report the last constraint
@@ -510,7 +511,7 @@ class _LPWriter_impl(object):
         integer_vars = []
         binary_vars = []
         getSymbolByObjectID = self.symbol_map.byObject.get
-        for vid, v in var_map.items():
+        for vid, v in self.var_map.items():
             # Some variables in the var_map may not actually have been
             # written out to the LP file (e.g., added from col_order, or
             # multiplied by 0 in the expressions).  Check to see that
@@ -526,8 +527,8 @@ class _LPWriter_impl(object):
             # Note: Var.bounds guarantees the values are either (finite)
             # native_numeric_types or None
             lb, ub = v.bounds
-            lb = '-inf' if lb is None else repr(lb)
-            ub = '+inf' if ub is None else repr(ub)
+            lb = '-inf' if lb is None else str(lb)
+            ub = '+inf' if ub is None else str(ub)
             ostream.write(f"\n   {lb} <= {v_symbol} <= {ub}")
 
         if integer_vars:
@@ -552,19 +553,17 @@ class _LPWriter_impl(object):
                     )
                 )
             if self.config.row_order:
-                # sort() is stable (per Python docs), so we can let
-                # all unspecified rows have a row number one bigger than
-                # the number of rows specified by the user ordering.
-                _n = len(row_order)
-                sos.sort(key=lambda x: _row_getter(x, _n))
+                row_map = row_order2row_map(self.config)
+                _n = len(row_map)
+                sos.sort(key=lambda x: row_map.get(id(x), _n))
 
             ostream.write("\nSOS\n")
             for soscon in sos:
                 ostream.write(f'\n{getSymbol(soscon)}: S{soscon.level}::\n')
                 for v, w in getattr(soscon, 'get_items', soscon.items)():
                     if w.__class__ not in int_float:
-                        w = float(f)
-                    ostream.write(f"  {getSymbol(v)}:{w!r}\n")
+                        w = float(w)
+                    ostream.write(f"  {getSymbol(v)}:{w!s}\n")
 
         ostream.write("\nend\n")
 
@@ -583,9 +582,9 @@ class _LPWriter_impl(object):
                 expr.linear.items(), key=lambda x: getVarOrder(x[0])
             ):
                 if coef < 0:
-                    ostream.write(f'{coef!r} {getSymbol(getVar(vid))}\n')
+                    ostream.write(f'{coef!s} {getSymbol(getVar(vid))}\n')
                 else:
-                    ostream.write(f'+{coef!r} {getSymbol(getVar(vid))}\n')
+                    ostream.write(f'+{coef!s} {getSymbol(getVar(vid))}\n')
 
         quadratic = getattr(expr, 'quadratic', None)
         if quadratic:
@@ -604,9 +603,9 @@ class _LPWriter_impl(object):
                     col = c1, c2
                     sym = f' {getSymbol(getVar(vid1))} * {getSymbol(getVar(vid2))}\n'
                 if coef < 0:
-                    return col, repr(coef) + sym
+                    return col, str(coef) + sym
                 else:
-                    return col, '+' + repr(coef) + sym
+                    return col, f'+{coef!s}{sym}'
 
             if is_objective:
                 #

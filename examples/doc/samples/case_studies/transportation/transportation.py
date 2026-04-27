@@ -1,13 +1,22 @@
-from pyomo.core import *
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
-model = AbstractModel()
+import pyomo.environ as pyo
 
-model.warehouses = Set()
-model.stores = Set()
-model.supply = Param(model.warehouses)
-model.demand = Param(model.stores)
-model.costs = Param(model.warehouses, model.stores)
-model.amounts = Var(model.warehouses, model.stores, within=NonNegativeReals)
+model = pyo.AbstractModel()
+
+model.warehouses = pyo.Set()
+model.stores = pyo.Set()
+model.supply = pyo.Param(model.warehouses)
+model.demand = pyo.Param(model.stores)
+model.costs = pyo.Param(model.warehouses, model.stores)
+model.amounts = pyo.Var(model.warehouses, model.stores, within=pyo.NonNegativeReals)
 
 
 def costRule(model):
@@ -18,14 +27,14 @@ def costRule(model):
     )
 
 
-model.cost = Objective(rule=costRule)
+model.cost = pyo.Objective(rule=costRule)
 
 
 def minDemandRule(model, store):
     return sum(model.amounts[i, store] for i in model.warehouses) >= model.demand[store]
 
 
-model.demandConstraint = Constraint(model.stores, rule=minDemandRule)
+model.demandConstraint = pyo.Constraint(model.stores, rule=minDemandRule)
 
 
 def maxSupplyRule(model, warehouse):
@@ -35,4 +44,4 @@ def maxSupplyRule(model, warehouse):
     )
 
 
-model.supplyConstraint = Constraint(model.warehouses, rule=maxSupplyRule)
+model.supplyConstraint = pyo.Constraint(model.warehouses, rule=maxSupplyRule)

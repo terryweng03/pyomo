@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from io import StringIO
 import shlex
@@ -18,6 +16,7 @@ from pyomo.core.base import Constraint, Var, value, Objective
 from pyomo.opt import ProblemFormat, SolverFactory
 
 import pyomo.common
+from pyomo.common.dependencies import pathlib
 from pyomo.common.collections import Bunch
 from pyomo.common.tee import TeeStream
 
@@ -36,17 +35,35 @@ from pyomo.opt.results import (
     Solution,
     SolutionStatus,
     TerminationCondition,
-    ProblemSense,
 )
 
 from pyomo.common.dependencies import attempt_import
+import struct
 
-gdxcc, gdxcc_available = attempt_import('gdxcc', defer_check=True)
+
+def _gams_importer():
+    try:
+        import gams.core.gdx as gdx
+
+        return gdx
+    except ImportError:
+        try:
+            # fall back to the pre-GAMS-45.0 API
+            import gdxcc
+
+            return gdxcc
+        except:
+            # suppress the error from the old API and reraise the current API import error
+            pass
+        raise
+
+
+gdxcc, gdxcc_available = attempt_import('gdxcc', importer=_gams_importer)
 
 logger = logging.getLogger('pyomo.solvers')
 
 
-class _GAMSSolver(object):
+class _GAMSSolver:
     """Aggregate of common methods for GAMS interfaces"""
 
     def __init__(self, **kwds):
@@ -118,9 +135,7 @@ class _GAMSSolver(object):
             obj.. ans =g= sum(I, x(I));
             model test / all /;
             solve test using lp minimizing ans;
-            """ % (
-            n,
-        )
+            """ % (n,)
 
     #
     # Support "with" statements.
@@ -198,8 +213,8 @@ class GAMSDirect(_GAMSSolver):
             return _extract_version('')
         from gams import GamsWorkspace
 
-        ws = GamsWorkspace()
-        version = tuple(int(i) for i in ws._version.split('.')[:4])
+        workspace = GamsWorkspace()
+        version = tuple(int(i) for i in workspace._version.split('.')[:4])
         while len(version) < 4:
             version += (0,)
         return version
@@ -209,8 +224,8 @@ class GAMSDirect(_GAMSSolver):
         try:
             from gams import GamsWorkspace, DebugLevel
 
-            ws = GamsWorkspace(debug=DebugLevel.Off, working_directory=tmpdir)
-            t1 = ws.add_job_from_string(self._simple_model(n))
+            workspace = GamsWorkspace(debug=DebugLevel.Off, working_directory=tmpdir)
+            t1 = workspace.add_job_from_string(self._simple_model(n))
             t1.run()
             return True
         except:
@@ -301,11 +316,11 @@ class GAMSDirect(_GAMSSolver):
                 filename=output_file,
                 format=ProblemFormat.gams,
                 _called_by_solver=True,
-                **io_options
+                **io_options,
             )
             symbolMap = getattr(model, "._symbol_maps")[smap_id]
         else:
-            (_, smap_id) = model.write(
+            _, smap_id = model.write(
                 filename=output_file, format=ProblemFormat.gams, io_options=io_options
             )
             symbolMap = model.solutions.symbol_map[smap_id]
@@ -330,12 +345,12 @@ class GAMSDirect(_GAMSSolver):
         if tmpdir is not None and os.path.exists(tmpdir):
             newdir = False
 
-        ws = GamsWorkspace(
+        workspace = GamsWorkspace(
             debug=DebugLevel.KeepFiles if keepfiles else DebugLevel.Off,
             working_directory=tmpdir,
         )
 
-        t1 = ws.add_job_from_string(output_file.getvalue())
+        t1 = workspace.add_job_from_string(output_file.getvalue())
 
         try:
             with OutputStream(tee=tee, logfile=logfile) as output_stream:
@@ -349,7 +364,9 @@ class GAMSDirect(_GAMSSolver):
                 # Always name working directory or delete files,
                 # regardless of any errors.
                 if keepfiles:
-                    print("\nGAMS WORKING DIRECTORY: %s\n" % ws.working_directory)
+                    print(
+                        "\nGAMS WORKING DIRECTORY: %s\n" % workspace.working_directory
+                    )
                 elif tmpdir is not None:
                     # Garbage collect all references to t1.out_db
                     # So that .gdx file can be deleted
@@ -359,7 +376,7 @@ class GAMSDirect(_GAMSSolver):
         except:
             # Catch other errors and remove files first
             if keepfiles:
-                print("\nGAMS WORKING DIRECTORY: %s\n" % ws.working_directory)
+                print("\nGAMS WORKING DIRECTORY: %s\n" % workspace.working_directory)
             elif tmpdir is not None:
                 # Garbage collect all references to t1.out_db
                 # So that .gdx file can be deleted
@@ -398,7 +415,9 @@ class GAMSDirect(_GAMSSolver):
         extract_rc = 'rc' in model_suffixes
 
         results = SolverResults()
-        results.problem.name = os.path.join(ws.working_directory, t1.name + '.gms')
+        results.problem.name = os.path.join(
+            workspace.working_directory, t1.name + '.gms'
+        )
         results.problem.lower_bound = t1.out_db["OBJEST"].find_record().value
         results.problem.upper_bound = t1.out_db["OBJEST"].find_record().value
         results.problem.number_of_variables = t1.out_db["NUMVAR"].find_record().value
@@ -418,11 +437,10 @@ class GAMSDirect(_GAMSSolver):
         assert len(obj) == 1, 'Only one objective is allowed.'
         obj = obj[0]
         objctvval = t1.out_db["OBJVAL"].find_record().value
+        results.problem.sense = obj.sense
         if obj.is_minimizing():
-            results.problem.sense = ProblemSense.minimize
             results.problem.upper_bound = objctvval
         else:
-            results.problem.sense = ProblemSense.maximize
             results.problem.lower_bound = objctvval
 
         results.solver.name = "GAMS " + str(self.version())
@@ -587,7 +605,7 @@ class GAMSDirect(_GAMSSolver):
         results.solution.insert(soln)
 
         if keepfiles:
-            print("\nGAMS WORKING DIRECTORY: %s\n" % ws.working_directory)
+            print("\nGAMS WORKING DIRECTORY: %s\n" % workspace.working_directory)
         elif tmpdir is not None:
             # Garbage collect all references to t1.out_db
             # So that .gdx file can be deleted
@@ -605,9 +623,9 @@ class GAMSDirect(_GAMSSolver):
                 results.solution(0).symbol_map = getattr(model, "._symbol_maps")[
                     results._smap_id
                 ]
-                results.solution(
-                    0
-                ).default_variable_value = self._default_variable_value
+                results.solution(0).default_variable_value = (
+                    self._default_variable_value
+                )
                 if load_solutions:
                     model.load_solution(results.solution(0))
             else:
@@ -725,17 +743,31 @@ class GAMSShell(_GAMSSolver):
             )
             return _extract_version(results.stdout)
 
-    @staticmethod
-    def _parse_special_values(value):
-        if value == 1.0e300 or value == 2.0e300:
-            return float('nan')
-        if value == 3.0e300:
-            return float('inf')
-        if value == 4.0e300:
-            return -float('inf')
-        if value == 5.0e300:
-            return sys.float_info.epsilon
-        return value
+    def _rewrite_path_win8p3(self, path):
+        """
+        Return the 8.3 short path on Windows; unchanged elsewhere.
+
+        This change is in response to Pyomo/pyomo#3579 which reported
+        that GAMS (direct) fails on Windows if there is a space in
+        the path. This utility converts paths to their 8.3 short-path version
+        (which never have spaces).
+        """
+        if not sys.platform.startswith("win"):
+            return str(path)
+
+        import ctypes, ctypes.wintypes as wt
+
+        GetShortPathNameW = ctypes.windll.kernel32.GetShortPathNameW
+        GetShortPathNameW.argtypes = [wt.LPCWSTR, wt.LPWSTR, wt.DWORD]
+
+        # the file must exist, or Windows will not create a short name
+        pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(path).touch(exist_ok=True)
+
+        buf = ctypes.create_unicode_buffer(260)
+        if GetShortPathNameW(str(path), buf, 260):
+            return buf.value
+        return str(path)
 
     def solve(self, *args, **kwds):
         """
@@ -843,11 +875,11 @@ class GAMSShell(_GAMSSolver):
                 filename=output_filename,
                 format=ProblemFormat.gams,
                 _called_by_solver=True,
-                **io_options
+                **io_options,
             )
             symbolMap = getattr(model, "._symbol_maps")[smap_id]
         else:
-            (_, smap_id) = model.write(
+            _, smap_id = model.write(
                 filename=output_filename,
                 format=ProblemFormat.gams,
                 io_options=io_options,
@@ -879,7 +911,7 @@ class GAMSShell(_GAMSSolver):
         elif tee and logfile:
             command.append("lo=4")
         if logfile:
-            command.append("lf=" + str(logfile))
+            command.append(f"lf={self._rewrite_path_win8p3(logfile)}")
 
         try:
             ostreams = [StringIO()]
@@ -980,11 +1012,10 @@ class GAMSShell(_GAMSSolver):
         assert len(obj) == 1, 'Only one objective is allowed.'
         obj = obj[0]
         objctvval = stat_vars["OBJVAL"]
+        results.problem.sense = obj.sense
         if obj.is_minimizing():
-            results.problem.sense = ProblemSense.minimize
             results.problem.upper_bound = objctvval
         else:
-            results.problem.sense = ProblemSense.maximize
             results.problem.lower_bound = objctvval
 
         results.solver.name = "GAMS " + str(self.version())
@@ -1187,9 +1218,9 @@ class GAMSShell(_GAMSSolver):
                 results.solution(0).symbol_map = getattr(model, "._symbol_maps")[
                     results._smap_id
                 ]
-                results.solution(
-                    0
-                ).default_variable_value = self._default_variable_value
+                results.solution(0).default_variable_value = (
+                    self._default_variable_value
+                )
                 if load_solutions:
                     model.load_solution(results.solution(0))
             else:
@@ -1250,6 +1281,18 @@ class GAMSShell(_GAMSSolver):
             if not ret[0]:
                 raise RuntimeError("GAMS GDX failure (gdxOpenRead): %d." % ret[1])
 
+            specVals = gdxcc.doubleArray(gdxcc.GMS_SVIDX_MAX)
+            rc = gdxcc.gdxGetSpecialValues(pgdx, specVals)
+
+            specVals[gdxcc.GMS_SVIDX_EPS] = sys.float_info.min
+            specVals[gdxcc.GMS_SVIDX_UNDEF] = float("nan")
+            specVals[gdxcc.GMS_SVIDX_PINF] = float("inf")
+            specVals[gdxcc.GMS_SVIDX_MINF] = float("-inf")
+            specVals[gdxcc.GMS_SVIDX_NA] = struct.unpack(
+                ">d", bytes.fromhex("fffffffffffffffe")
+            )[0]
+            gdxcc.gdxSetSpecialValues(pgdx, specVals)
+
             i = 0
             while True:
                 i += 1
@@ -1271,7 +1314,7 @@ class GAMSShell(_GAMSSolver):
                     raise RuntimeError("GAMS GDX failure (gdxDataReadRaw).")
 
                 if stat in ('OBJEST', 'OBJVAL', 'ETSOLVE'):
-                    stat_vars[stat] = self._parse_special_values(ret[2][0])
+                    stat_vars[stat] = ret[2][0]
                 else:
                     stat_vars[stat] = int(ret[2][0])
 
@@ -1283,6 +1326,18 @@ class GAMSShell(_GAMSSolver):
             if not ret[0]:
                 raise RuntimeError("GAMS GDX failure (gdxOpenRead): %d." % ret[1])
 
+            specVals = gdxcc.doubleArray(gdxcc.GMS_SVIDX_MAX)
+            rc = gdxcc.gdxGetSpecialValues(pgdx, specVals)
+
+            specVals[gdxcc.GMS_SVIDX_EPS] = sys.float_info.min
+            specVals[gdxcc.GMS_SVIDX_UNDEF] = float("nan")
+            specVals[gdxcc.GMS_SVIDX_PINF] = float("inf")
+            specVals[gdxcc.GMS_SVIDX_MINF] = float("-inf")
+            specVals[gdxcc.GMS_SVIDX_NA] = struct.unpack(
+                ">d", bytes.fromhex("fffffffffffffffe")
+            )[0]
+            gdxcc.gdxSetSpecialValues(pgdx, specVals)
+
             i = 0
             while True:
                 i += 1
@@ -1293,8 +1348,8 @@ class GAMSShell(_GAMSSolver):
                 ret = gdxcc.gdxDataReadRaw(pgdx)
                 if not ret[0] or len(ret[2]) < 2:
                     raise RuntimeError("GAMS GDX failure (gdxDataReadRaw).")
-                level = self._parse_special_values(ret[2][0])
-                dual = self._parse_special_values(ret[2][1])
+                level = ret[2][0]
+                dual = ret[2][1]
 
                 ret = gdxcc.gdxSymbolInfo(pgdx, i)
                 if not ret[0]:
@@ -1307,6 +1362,7 @@ class GAMSShell(_GAMSSolver):
             gdxcc.gdxClose(pgdx)
 
         gdxcc.gdxFree(pgdx)
+        gdxcc.gdxLibraryUnload()
         return model_soln, stat_vars
 
     def _parse_dat_results(self, results_filename, statresults_filename):

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
 # Unit Tests for pyomo.base.misc
 #
@@ -16,16 +14,10 @@ import re
 import sys
 import subprocess
 
-from collections import namedtuple
-
 import pyomo.common.unittest as unittest
 
-from pyomo.common.dependencies import numpy_available, attempt_import
 
-pyro4, pyro4_available = attempt_import('Pyro4')
-
-
-class ImportData(object):
+class ImportData:
     def __init__(self):
         self.tpl = {}
         self.pyomo = {}
@@ -143,34 +135,33 @@ class TestPyomoEnviron(unittest.TestCase):
             'ast',  # Imported on Windows
             'backports_abc',  # Imported by cython on Linux
             'base64',  # Imported on Windows
+            'bisect',  # Imported by dae, dataportal, contrib/mpc
             'cPickle',
             'csv',
-            'ctypes',
+            'ctypes',  # mandatory import in core/base/external.py; TODO: fix this
+            'datetime',  # imported by contrib.solver
             'decimal',
             'gc',  # Imported on MacOS, Windows; Linux in 3.10
             'glob',
             'heapq',  # Added in Python 3.10
-            'importlib',  # Imported on Windows
+            'importlib',
             'inspect',
             'json',  # Imported on Windows
             'locale',  # Added in Python 3.9
             'logging',
             'pickle',
             'platform',
-            'random',  # Imported on MacOS, Windows
             'shlex',
             'socket',  # Imported on MacOS, Windows; Linux in 3.10
+            'subprocess',
             'tempfile',  # Imported on MacOS, Windows
             'textwrap',
             'typing',
             'win32file',  # Imported on Windows
             'win32pipe',  # Imported on Windows
         }
-        # Non-standard-library TPLs that Pyomo will load unconditionally
-        ref.add('ply')
-        ref.add('pyutilib')
-        if numpy_available:
-            ref.add('numpy')
+        # Non-standard-library TPLs that Pyomo will load unconditionally:
+        # ref.add('ply')  # PLY removed as a dependency in 6.10.0
         diff = set(_[0] for _ in tpl_by_time[-5:]).difference(ref)
         self.assertEqual(
             diff, set(), "Unexpected module found in 5 slowest-loading TPL modules"

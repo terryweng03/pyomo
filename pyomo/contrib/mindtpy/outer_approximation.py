@@ -1,22 +1,20 @@
 # -*- coding: utf-8 -*-
 
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.contrib.mindtpy.util import calc_jacobians
 from pyomo.core import ConstraintList
 from pyomo.opt import SolverFactory
 from pyomo.contrib.mindtpy.config_options import _get_MindtPy_OA_config
 from pyomo.contrib.mindtpy.algorithm_base_class import _MindtPyAlgorithm
-from pyomo.contrib.mindtpy.cut_generation import add_oa_cuts
+from pyomo.contrib.mindtpy.cut_generation import add_oa_cuts, add_oa_cuts_for_grey_box
 
 
 @SolverFactory.register(
@@ -63,7 +61,7 @@ class MindtPy_OA_Solver(_MindtPyAlgorithm):
             if config.mip_solver not in {'cplex_persistent', 'gurobi_persistent'}:
                 raise ValueError(
                     "Only cplex_persistent and gurobi_persistent are supported for LP/NLP based Branch and Bound method."
-                    "Please refer to https://pyomo.readthedocs.io/en/stable/contributed_packages/mindtpy.html#lp-nlp-based-branch-and-bound."
+                    "Please refer to https://pyomo.readthedocs.io/en/stable/explanation/solvers/mindtpy.html#lp-nlp-based-branch-and-bound."
                 )
             if config.threads > 1:
                 config.threads = 1
@@ -94,15 +92,23 @@ class MindtPy_OA_Solver(_MindtPyAlgorithm):
         _MindtPyAlgorithm.check_config(self)
 
     def initialize_mip_problem(self):
-        '''Deactivate the nonlinear constraints to create the MIP problem.'''
+        """Deactivate the nonlinear constraints to create the MIP problem."""
         super().initialize_mip_problem()
-        self.jacobians = calc_jacobians(self.mip, self.config)  # preload jacobians
+        self.jacobians = calc_jacobians(
+            self.mip.MindtPy_utils.nonlinear_constraint_list,
+            self.config.differentiate_mode,
+        )  # preload jacobians
         self.mip.MindtPy_utils.cuts.oa_cuts = ConstraintList(
             doc='Outer approximation cuts'
         )
 
     def add_cuts(
-        self, dual_values, linearize_active=True, linearize_violated=True, cb_opt=None
+        self,
+        dual_values,
+        linearize_active=True,
+        linearize_violated=True,
+        cb_opt=None,
+        nlp=None,
     ):
         add_oa_cuts(
             self.mip,
@@ -117,6 +123,10 @@ class MindtPy_OA_Solver(_MindtPyAlgorithm):
             linearize_active,
             linearize_violated,
         )
+        if len(self.mip.MindtPy_utils.grey_box_list) > 0:
+            add_oa_cuts_for_grey_box(
+                self.mip, nlp, self.config, self.objective_sense, self.mip_iter, cb_opt
+            )
 
     def deactivate_no_good_cuts_when_fixing_bound(self, no_good_cuts):
         # Only deactivate the last OA cuts may not be correct.

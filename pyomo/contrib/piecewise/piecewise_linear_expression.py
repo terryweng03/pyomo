@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.common.autoslots import AutoSlots
 from pyomo.core.expr.numeric_expr import NumericExpression
@@ -17,12 +15,15 @@ from weakref import ref as weakref_ref
 class PiecewiseLinearExpression(NumericExpression):
     """
     A numeric expression node representing a specific instantiation of a
-    PiecewiseLinearFunction.
+    :obj:`~.piecewise_linear_function.PiecewiseLinearFunction`.
 
-    Args:
-        args (list or tuple): Children of this node
-        pw_linear_function (PiecewiseLinearFunction): piece-wise linear function
-            of which this node is an instance.
+    Parameters
+    ----------
+    args : list or tuple
+        Children of this node
+
+    pw_linear_function : ~piecewise_linear_function.PiecewiseLinearFunction
+        Piece-wise linear function of which this node is an instance.
     """
 
     __slots__ = ('_pw_linear_function',)

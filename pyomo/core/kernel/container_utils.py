@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.core.kernel.dict_container import DictContainer
 from pyomo.core.kernel.tuple_container import TupleContainer
@@ -26,6 +24,8 @@ def define_homogeneous_container_type(
     is equivalent to placing the following class definition
     within that module:
 
+    .. code::
+
         class <name>(<container_class>):
             <doc>
             _ctype = <ctype>
@@ -43,6 +43,7 @@ def define_homogeneous_container_type(
                 self._storage_key = None
                 self._active = True
                 super(<name>, self).__init__(*args, **kwds)
+
     """
     assert name not in namespace
     cls_dict = {}

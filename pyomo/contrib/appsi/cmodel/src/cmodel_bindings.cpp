@@ -1,14 +1,12 @@
-/**___________________________________________________________________________
+/**____________________________________________________________________________________
  *
- *  Pyomo: Python Optimization Modeling Objects
- * Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
- * Under the terms of Contract DE-NA0003525 with National Technology and
- * Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
- * rights in this software.
- * This software is distributed under the 3-clause BSD License.
- * ___________________________________________________________________________
- **/
+ * Pyomo: Python Optimization Modeling Objects
+ * Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+ * Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+ * Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+ * software.  This software is distributed under the 3-clause BSD License.
+ * ____________________________________________________________________________________
+**/
 
 #include "expression.hpp"
 #include "fbbt_model.hpp"
@@ -63,7 +61,8 @@ PYBIND11_MODULE(appsi_cmodel, m) {
   m.def("appsi_exprs_from_pyomo_exprs", &appsi_exprs_from_pyomo_exprs);
   m.def("appsi_expr_from_pyomo_expr", &appsi_expr_from_pyomo_expr);
   m.def("prep_for_repn", &prep_for_repn);
-  py::class_<PyomoExprTypes>(m, "PyomoExprTypes").def(py::init<>());
+  py::class_<PyomoExprTypes>(m, "PyomoExprTypes", py::module_local())
+      .def(py::init<>());
   py::class_<Node, std::shared_ptr<Node>>(m, "Node")
       .def("is_variable_type", &Node::is_variable_type)
       .def("is_param_type", &Node::is_param_type)
@@ -165,7 +164,7 @@ PYBIND11_MODULE(appsi_cmodel, m) {
       .def(py::init<>())
       .def("write", &LPWriter::write)
       .def("get_solve_cons", &LPWriter::get_solve_cons);
-  py::enum_<ExprType>(m, "ExprType")
+  py::enum_<ExprType>(m, "ExprType", py::module_local())
       .value("py_float", ExprType::py_float)
       .value("var", ExprType::var)
       .value("param", ExprType::param)

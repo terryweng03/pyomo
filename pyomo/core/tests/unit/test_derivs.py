@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import pyomo.common.unittest as unittest
 import pyomo.environ as pyo
@@ -321,6 +319,18 @@ class TestDerivs(unittest.TestCase):
         self.assertAlmostEqual(derivs[m.x], approx_deriv(e, m.x), tol)
         self.assertAlmostEqual(derivs[m.y], pyo.value(symbolic[m.y]), tol + 3)
         self.assertAlmostEqual(derivs[m.y], approx_deriv(e, m.y), tol)
+
+    def test_linear_exprs_issue_3096(self):
+        m = pyo.ConcreteModel()
+        m.y1 = pyo.Var(initialize=10)
+        m.y2 = pyo.Var(initialize=100)
+        e = (m.y1 - 0.5) * (m.y1 - 0.5) + (m.y2 - 0.5) * (m.y2 - 0.5)
+        derivs = reverse_ad(e)
+        self.assertEqual(derivs[m.y1], 19)
+        self.assertEqual(derivs[m.y2], 199)
+        symbolic = reverse_sd(e)
+        self.assertExpressionsEqual(symbolic[m.y1], m.y1 - 0.5 + m.y1 - 0.5)
+        self.assertExpressionsEqual(symbolic[m.y2], m.y2 - 0.5 + m.y2 - 0.5)
 
 
 class TestDifferentiate(unittest.TestCase):

@@ -1,3 +1,12 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 """
 Main module for community detection integration with Pyomo models.
 
@@ -7,6 +16,7 @@ distinguished by the degree of connectivity between community members.
 Original implementation developed by Rahul Joglekar in the Grossmann research group.
 
 """
+
 from logging import getLogger
 
 from pyomo.common.dependencies import attempt_import
@@ -19,7 +29,7 @@ from pyomo.core import (
     Objective,
     ConstraintList,
 )
-from pyomo.core.base.objective import _GeneralObjectiveData
+from pyomo.core.base.objective import ObjectiveData
 from pyomo.core.expr.visitor import replace_expressions, identify_variables
 from pyomo.contrib.community_detection.community_graph import generate_model_graph
 from pyomo.common.dependencies import networkx as nx
@@ -270,7 +280,7 @@ def detect_communities(
     )
 
 
-class CommunityMap(object):
+class CommunityMap:
     """
     This class is used to create CommunityMap objects which are returned by the detect_communities function. Instances
     of this class allow dict-like usage and store relevant information about the given community map, such as the
@@ -453,16 +463,14 @@ class CommunityMap(object):
         if type_of_graph != self.type_of_community_map:
             # Use the generate_model_graph function to create a NetworkX graph of the given model (along with
             # number_component_map and constraint_variable_map, which will be used to help with drawing the graph)
-            (
-                model_graph,
-                number_component_map,
-                constraint_variable_map,
-            ) = generate_model_graph(
-                self.model,
-                type_of_graph=type_of_graph,
-                with_objective=self.with_objective,
-                weighted_graph=self.weighted_graph,
-                use_only_active_components=self.use_only_active_components,
+            model_graph, number_component_map, constraint_variable_map = (
+                generate_model_graph(
+                    self.model,
+                    type_of_graph=type_of_graph,
+                    with_objective=self.with_objective,
+                    weighted_graph=self.weighted_graph,
+                    use_only_active_components=self.use_only_active_components,
+                )
             )
         else:
             # This is the case where, as mentioned above, we can use the networkX graph that was made to create
@@ -570,7 +578,7 @@ class CommunityMap(object):
                 pos = nx.spring_layout(model_graph)
 
         # Define color_map
-        color_map = plt.cm.get_cmap('viridis', len(numbered_community_map))
+        color_map = plt.get_cmap('viridis', len(numbered_community_map))
 
         # Create the figure and draw the graph
         fig = plt.figure()
@@ -606,9 +614,7 @@ class CommunityMap(object):
         subtitle_font_size = 11
         plt.title(subtitle_naming_dict[type_of_graph], fontsize=subtitle_font_size)
 
-        if filename is None:
-            plt.show()
-        else:
+        if filename is not None:
             plt.savefig(filename)
             plt.close()
 
@@ -726,13 +732,10 @@ class CommunityMap(object):
                         variable_in_new_model = structured_model.find_component(
                             new_variable
                         )
-                        blocked_variable_map[
-                            variable_in_stored_constraint
-                        ] = blocked_variable_map.get(
-                            variable_in_stored_constraint, []
-                        ) + [
-                            variable_in_new_model
-                        ]
+                        blocked_variable_map[variable_in_stored_constraint] = (
+                            blocked_variable_map.get(variable_in_stored_constraint, [])
+                            + [variable_in_new_model]
+                        )
 
                         # Update replace_variables_in_expression_map accordingly
                         replace_variables_in_expression_map[
@@ -743,7 +746,7 @@ class CommunityMap(object):
                 # Check to see whether 'stored_constraint' is actually an objective (since constraints and objectives
                 # grouped together)
                 if self.with_objective and isinstance(
-                    stored_constraint, (_GeneralObjectiveData, Objective)
+                    stored_constraint, (ObjectiveData, Objective)
                 ):
                     # If the constraint is actually an objective, we add it to the block as an objective
                     new_objective = Objective(
@@ -802,11 +805,10 @@ class CommunityMap(object):
                         variable_in_new_model = structured_model.find_component(
                             new_variable
                         )
-                        blocked_variable_map[
-                            variable_in_objective
-                        ] = blocked_variable_map.get(variable_in_objective, []) + [
-                            variable_in_new_model
-                        ]
+                        blocked_variable_map[variable_in_objective] = (
+                            blocked_variable_map.get(variable_in_objective, [])
+                            + [variable_in_new_model]
+                        )
 
                         # Update the dictionary that we will use to replace the variables
                         replace_variables_in_expression_map[

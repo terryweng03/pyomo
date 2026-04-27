@@ -1,16 +1,15 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import enum
 import sys
+from pyomo.common import enums
 
 if sys.version_info[:2] >= (3, 11):
     strictEnum = {'boundary': enum.STRICT}
@@ -33,7 +32,6 @@ class TraversalStrategy(enum.Enum, **strictEnum):
 
 
 class SortComponents(enum.Flag, **strictEnum):
-
     """
     This class is a convenient wrapper for specifying various sort
     ordering.  We pass these objects to the "sort" argument to various
@@ -59,7 +57,7 @@ class SortComponents(enum.Flag, **strictEnum):
     alphabeticalOrder = alphaOrder
     alphabetical = alphaOrder
     # both alpha and decl orders are deterministic, so only must sort indices
-    deterministic = indices
+    deterministic = ORDERED_INDICES
     sortBoth = indices | alphabeticalOrder  # Same as True
     alphabetizeComponentAndIndex = sortBoth
 
@@ -94,3 +92,8 @@ class SortComponents(enum.Flag, **strictEnum):
     @staticmethod
     def sort_indices(flag):
         return SortComponents.SORTED_INDICES in SortComponents(flag)
+
+
+class VarCollector(enums.IntEnum):
+    FromVarComponents = 1
+    FromExpressions = 2

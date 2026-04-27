@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """Module with diagnostic utilities for infeasible models."""
+
 from pyomo.core import Constraint, Var, value
 from math import fabs
 import logging
@@ -159,7 +158,7 @@ def log_infeasible_constraints(
         if log_variables:
             line += ''.join(
                 f"\n  - VAR {v.name}: {v.value}"
-                for v in identify_variables(constr.body, include_fixed=True)
+                for v in identify_variables(constr.expr, include_fixed=True)
             )
 
         logger.info(line)

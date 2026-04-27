@@ -1,20 +1,19 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import logging
 
 import pyomo.environ as pyo
 from pyomo.core.expr import replace_expressions, identify_mutable_parameters
-from pyomo.core.base.var import IndexedVar
-from pyomo.core.base.param import IndexedParam
+from pyomo.core.base.var import IndexedVar, VarData
+from pyomo.core.base.param import IndexedParam, ParamData
+from pyomo.common.collections import ComponentMap
 
 from pyomo.environ import ComponentUID
 
@@ -49,6 +48,7 @@ def convert_params_to_vars(model, param_names=None, fix_vars=False):
 
     # Convert Params to Vars, unfix Vars, and create a substitution map
     substitution_map = {}
+    comp_map = ComponentMap()
     for i, param_name in enumerate(param_names):
         # Leverage the parser in ComponentUID to locate the component.
         theta_cuid = ComponentUID(param_name)
@@ -65,6 +65,7 @@ def convert_params_to_vars(model, param_names=None, fix_vars=False):
             theta_var_cuid = ComponentUID(theta_object.name)
             theta_var_object = theta_var_cuid.find_component_on(model)
             substitution_map[id(theta_object)] = theta_var_object
+            comp_map[theta_object] = theta_var_object
 
         # Indexed Param
         elif isinstance(theta_object, IndexedParam):
@@ -90,6 +91,7 @@ def convert_params_to_vars(model, param_names=None, fix_vars=False):
             # Update substitution map (map each indexed param to indexed var)
             theta_var_cuid = ComponentUID(theta_object.name)
             theta_var_object = theta_var_cuid.find_component_on(model)
+            comp_map[theta_object] = theta_var_object
             var_theta_objects = []
             for theta_obj in theta_var_object:
                 theta_cuid = ComponentUID(
@@ -101,6 +103,7 @@ def convert_params_to_vars(model, param_names=None, fix_vars=False):
                 param_theta_objects, var_theta_objects
             ):
                 substitution_map[id(param_theta_obj)] = var_theta_obj
+                comp_map[param_theta_obj] = var_theta_obj
 
         # Var or Indexed Var
         elif isinstance(theta_object, IndexedVar) or theta_object.is_variable_type():
@@ -129,8 +132,7 @@ def convert_params_to_vars(model, param_names=None, fix_vars=False):
             v.name in param_names for v in identify_mutable_parameters(expr)
         ):
             new_expr = replace_expressions(expr=expr, substitution_map=substitution_map)
-            model.del_component(expr)
-            model.add_component(expr.name, pyo.Expression(rule=new_expr))
+            expr.expr = new_expr
 
     # Convert Params to Vars in Constraint expressions
     num_constraints = len(list(model.component_objects(pyo.Constraint, active=True)))
@@ -182,9 +184,61 @@ def convert_params_to_vars(model, param_names=None, fix_vars=False):
             model.del_component(obj)
             model.add_component(obj.name, pyo.Objective(rule=expr, sense=obj.sense))
 
+    # Convert Params to Vars in Suffixes
+    for s in model.component_objects(pyo.Suffix):
+        current_keys = list(s.keys())
+        for c in current_keys:
+            if c in comp_map:
+                s[comp_map[c]] = s.pop(c)
+
+        assert len(current_keys) == len(s.keys())
+
     # print('--- Updated Model ---')
     # model.pprint()
     # solver = pyo.SolverFactory('ipopt')
     # solver.solve(model)
 
     return model
+
+
+def update_model_from_suffix(suffix_obj: pyo.Suffix, values):
+    """
+    Overwrite each variable/parameter referenced by ``suffix_obj`` with the
+    corresponding value in ``values``. The provided values are expected to
+    be in the same order as the components in the suffix from when it was
+    created.
+
+    Parameters
+    ----------
+    suffix_obj : pyomo.core.base.suffix.Suffix
+        The suffix whose *keys* are the components you want to update.
+        Call like ``update_from_suffix(model.unknown_parameters, vals)``.
+    values : iterable of numbers
+        New numerical values for the components referenced by the suffix.
+        Must be the same length as ``suffix_obj``.
+
+    Notes
+    -----
+    The measurement_error suffix is a special case: instead of updating the value of the
+    keys (variables/parameters), it updates the value stored in the suffix itself.
+    """
+    # Check that the length of values matches the suffix length
+    comps = list(suffix_obj.keys())
+    if len(comps) != len(values):
+        raise ValueError("values length does not match suffix length")
+
+    # Add a check for measurement error suffix
+    is_me_err = "measurement_error" in suffix_obj.name
+    # Iterate through the keys in the suffix and update their values
+    # First loop: check all values are the right type
+    for comp in comps:
+        if not isinstance(comp, (VarData, ParamData)):
+            raise TypeError(
+                f"Unsupported component type {type(comp)}; expected VarData or ParamData."
+            )
+    # Second loop: adjust the values
+    for comp, new_val in zip(comps, values):
+        if is_me_err:
+            suffix_obj[comp] = float(new_val)
+        else:
+            comp.set_value(float(new_val))

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.core import TransformationFactory, Var, NonNegativeReals
 from pyomo.core.base.misc import create_name
@@ -66,7 +64,7 @@ class EqualityTransform(IsomorphicTransformation):
             con = equality.__getattribute__(con_name)
 
             #
-            # Get all _ConstraintData objects
+            # Get all ConstraintData objects
             #
             # We need to get the keys ahead of time because we are modifying
             # con._data on-the-fly.
@@ -104,7 +102,7 @@ class EqualityTransform(IsomorphicTransformation):
                     con.add(ub_name, new_expr)
 
                 # Since we explicitly `continue` for equality constraints, we
-                # can safely remove the old _ConstraintData object
+                # can safely remove the old ConstraintData object
                 del con._data[ndx]
 
         return equality.create()

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from collections import namedtuple
 
@@ -19,7 +17,7 @@ from pyomo.core.expr.numvalue import ZeroConstant, native_numeric_types, as_nume
 from pyomo.core import Constraint, Var, Block, Set
 from pyomo.core.base.component import ModelComponentFactory
 from pyomo.core.base.global_set import UnindexedComponent_index
-from pyomo.core.base.block import _BlockData
+from pyomo.core.base.block import BlockData
 from pyomo.core.base.disable_methods import disable_methods
 from pyomo.core.base.initializer import (
     Initializer,
@@ -43,7 +41,7 @@ def complements(a, b):
     return ComplementarityTuple(a, b)
 
 
-class _ComplementarityData(_BlockData):
+class ComplementarityData(BlockData):
     def _canonical_expression(self, e):
         # Note: as the complimentarity component maintains references to
         # the original expression (e), it is NOT safe or valid to bypass
@@ -119,7 +117,12 @@ class _ComplementarityData(_BlockData):
             _e1, _e2 = _e2, _e1
         #
         if _e2[0] is None and _e2[2] is None:
-            self.c = Constraint(expr=(None, _e2[1], None))
+            # FIXME: this is making an unbounded RangedExpression -
+            # which makes little sense.  When we rework Complimentarity,
+            # we should determine how to avoid this overhead.
+            self.c = Constraint(
+                expr=EXPR.RangedExpression((None, _e2[1], None), strict=False)
+            )
             self.c._complementarity_type = 3
         elif _e2[2] is None:
             self.c = Constraint(expr=_e2[0] <= _e2[1])
@@ -179,9 +182,14 @@ class _ComplementarityData(_BlockData):
             )
 
 
+class _ComplementarityData(metaclass=RenamedClass):
+    __renamed__new_class__ = ComplementarityData
+    __renamed__version__ = '6.7.2'
+
+
 @ModelComponentFactory.register("Complementarity conditions.")
 class Complementarity(Block):
-    _ComponentDataClass = _ComplementarityData
+    _ComponentDataClass = ComplementarityData
 
     def __new__(cls, *args, **kwds):
         if cls != Complementarity:
@@ -198,15 +206,12 @@ class Complementarity(Block):
             return
         cc = _rule(b.parent_block(), idx)
         if cc is None:
-            raise ValueError(
-                """
+            raise ValueError("""
 Invalid complementarity condition.  The complementarity condition
 is None instead of a 2-tuple.  Please modify your rule to return
 Complementarity.Skip instead of None.
 
-Error thrown for Complementarity "%s"."""
-                % (b.name,)
-            )
+Error thrown for Complementarity "%s".""" % (b.name,))
         b.set_value(cc)
 
     def __init__(self, *args, **kwargs):
@@ -282,9 +287,9 @@ Error thrown for Complementarity "%s"."""
         # Book).
         _transformed = not issubclass(self.ctype, Complementarity)
 
-        def _conditional_block_printer(ostream, idx, data):
+        def _conditional_block_printer(ostream, sort, idx, data):
             if _transformed or len(data.component_map()):
-                self._pprint_callback(ostream, idx, data)
+                self._pprint_callback(ostream, sort, idx, data)
 
         return (
             [
@@ -292,15 +297,15 @@ Error thrown for Complementarity "%s"."""
                 ("Index", self._index_set if self.is_indexed() else None),
                 ("Active", self.active),
             ],
-            self._data.items(),
+            self.items,
             ("Arg0", "Arg1", "Active"),
             (_table_data, _conditional_block_printer),
         )
 
 
-class ScalarComplementarity(_ComplementarityData, Complementarity):
+class ScalarComplementarity(ComplementarityData, Complementarity):
     def __init__(self, *args, **kwds):
-        _ComplementarityData.__init__(self, self)
+        ComplementarityData.__init__(self, self)
         Complementarity.__init__(self, *args, **kwds)
         self._data[None] = self
         self._index = UnindexedComponent_index
@@ -357,12 +362,17 @@ class ComplementarityList(IndexedComplementarity):
         """
         Construct the expression(s) for this complementarity condition.
         """
-        if is_debug_set(logger):
-            logger.debug("Constructing complementarity list %s", self.name)
         if self._constructed:
             return
-        timer = ConstructionTimer(self)
         self._constructed = True
+
+        timer = ConstructionTimer(self)
+        if is_debug_set(logger):
+            logger.debug("Constructing complementarity list %s", self.name)
+
+        if self._anonymous_sets is not None:
+            for _set in self._anonymous_sets:
+                _set.construct()
 
         if self._init_rule is not None:
             _init = self._init_rule(self.parent_block(), ())

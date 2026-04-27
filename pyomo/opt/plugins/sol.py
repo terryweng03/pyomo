@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 #
 # Class for reading an AMPL *.sol file
@@ -23,7 +21,7 @@ from pyomo.opt import SolverResults, SolutionStatus, SolverStatus, TerminationCo
 @results.ReaderFactory.register(str(ResultsFormat.sol))
 class ResultsReader_sol(results.AbstractResultsReader):
     """
-    Class that reads in a *.sol results file and generates a
+    Class that reads in a ``*.sol`` results file and generates a
     SolverResults object.
     """
 
@@ -34,7 +32,7 @@ class ResultsReader_sol(results.AbstractResultsReader):
 
     def __call__(self, filename, res=None, soln=None, suffixes=[]):
         """
-        Parse a *.sol file
+        Parse a ``*.sol`` file
         """
         try:
             with open(filename, "r") as f:
@@ -241,9 +239,9 @@ class ResultsReader_sol(results.AbstractResultsReader):
                             translated_suffix_name = (
                                 suffix_name[0].upper() + suffix_name[1:]
                             )
-                            soln_constraint[key][
-                                translated_suffix_name
-                            ] = convert_function(suf_line[1])
+                            soln_constraint[key][translated_suffix_name] = (
+                                convert_function(suf_line[1])
+                            )
                     elif kind == 2:  # Obj
                         for cnt in range(nvalues):
                             suf_line = fin.readline().split()

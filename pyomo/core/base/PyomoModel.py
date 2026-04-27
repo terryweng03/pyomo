@@ -1,26 +1,23 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
-
-__all__ = ['Model', 'ConcreteModel', 'AbstractModel', 'global_option']
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import logging
 import sys
 from weakref import ref as weakref_ref
 import gc
 import math
+from typing import TypeVar
 
 from pyomo.common import timing
 from pyomo.common.collections import Bunch
 from pyomo.common.dependencies import pympler, pympler_available
-from pyomo.common.deprecation import deprecated, deprecation_warning
+from pyomo.common.deprecation import deprecated
 from pyomo.common.gc_manager import PauseGC
 from pyomo.common.log import is_debug_set
 from pyomo.common.numeric_types import value
@@ -34,12 +31,12 @@ from pyomo.core.base.suffix import active_import_suffix_generator
 from pyomo.core.base.block import ScalarBlock
 from pyomo.core.base.set import Set
 from pyomo.core.base.componentuid import ComponentUID
-from pyomo.core.base.transformation import TransformationFactory
 from pyomo.core.base.label import CNameLabeler, CuidLabeler
 from pyomo.dataportal.DataPortal import DataPortal
 
-from pyomo.opt.results import SolverResults, Solution, SolverStatus, UndefinedData
+from pyomo.opt.results import Solution, SolverStatus, UndefinedData
 
+from contextlib import nullcontext
 from io import StringIO
 
 logger = logging.getLogger('pyomo.core')
@@ -52,9 +49,12 @@ def global_option(function, name, value):
 
     Example use:
 
-    @global_option('config.foo.bar', 1)
-    def functor():
-        ...
+    .. code::
+
+       @global_option('config.foo.bar', 1)
+       def functor():
+           # ...
+
     """
     PyomoConfig._option[tuple(name.split('.'))] = value
 
@@ -87,7 +87,7 @@ class PyomoConfig(Bunch):
             d[item[-1]] = PyomoConfig._option[item]
 
 
-class ModelSolution(object):
+class ModelSolution:
     def __init__(self):
         self._metadata = {}
         self._metadata['status'] = None
@@ -146,7 +146,7 @@ class ModelSolution(object):
                 tmp[id(obj)] = (obj, entry)
 
 
-class ModelSolutions(object):
+class ModelSolutions:
     def __init__(self, instance):
         self._instance = weakref_ref(instance)
         self.clear()
@@ -571,6 +571,10 @@ class ModelSolutions(object):
         StaleFlagManager.mark_all_as_stale(delayed=True)
 
 
+# NOTE: Python 3.11+ use `typing.Self`
+ModelType = TypeVar("ModelType", bound="Model")
+
+
 @ModelComponentFactory.register(
     'Model objects can be used as a component of other models.'
 )
@@ -582,9 +586,9 @@ class Model(ScalarBlock):
 
     _Block_reserved_words = set()
 
-    def __new__(cls, *args, **kwds):
+    def __new__(cls: type[ModelType], *args, **kwds) -> ModelType:
         if cls != Model:
-            return super(Model, cls).__new__(cls)
+            return super(Model, cls).__new__(cls)  # type: ignore
 
         raise TypeError(
             "Directly creating the 'Model' class is not allowed.  Please use the "
@@ -642,7 +646,7 @@ class Model(ScalarBlock):
         namespaces=None,
         profile_memory=0,
         report_timing=False,
-        **kwds
+        **kwds,
     ):
         """
         Create a concrete instance of an abstract model, possibly using data
@@ -691,9 +695,6 @@ arguments (which have been ignored):"""
         if self.is_constructed():
             return self.clone()
 
-        if report_timing:
-            timing.report_timing()
-
         if name is None:
             # Preserve only the local name (not the FQ name, as that may
             # have been quoted or otherwise escaped)
@@ -709,42 +710,44 @@ arguments (which have been ignored):"""
         if data is None:
             data = {}
 
-        #
-        # Clone the model and load the data
-        #
-        instance = self.clone()
+        reporting_context = timing.report_timing if report_timing else nullcontext
+        with reporting_context():
+            #
+            # Clone the model and load the data
+            #
+            instance = self.clone()
 
-        if name is not None:
-            instance._name = name
+            if name is not None:
+                instance._name = name
 
-        # If someone passed a rule for creating the instance, fire the
-        # rule before constructing the components.
-        if instance._rule is not None:
-            instance._rule(instance, next(iter(self.index_set())))
+            # If someone passed a rule for creating the instance, fire the
+            # rule before constructing the components.
+            if instance._rule is not None:
+                instance._rule(instance, next(iter(self.index_set())))
 
-        if namespaces:
-            _namespaces = list(namespaces)
-        else:
-            _namespaces = []
-        if namespace is not None:
-            _namespaces.append(namespace)
-        if None not in _namespaces:
-            _namespaces.append(None)
+            if namespaces:
+                _namespaces = list(namespaces)
+            else:
+                _namespaces = []
+            if namespace is not None:
+                _namespaces.append(namespace)
+            if None not in _namespaces:
+                _namespaces.append(None)
 
-        instance.load(data, namespaces=_namespaces, profile_memory=profile_memory)
+            instance.load(data, namespaces=_namespaces, profile_memory=profile_memory)
 
-        #
-        # Indicate that the model is concrete/constructed
-        #
-        instance._constructed = True
-        #
-        # Change this class from "Abstract" to "Concrete".  It is
-        # absolutely crazy that this is allowed in Python, but since the
-        # AbstractModel and ConcreteModel are basically identical, we
-        # can "reassign" the new concrete instance to be an instance of
-        # ConcreteModel
-        #
-        instance.__class__ = ConcreteModel
+            #
+            # Indicate that the model is concrete/constructed
+            #
+            instance._constructed = True
+            #
+            # Change this class from "Abstract" to "Concrete".  It is
+            # absolutely crazy that this is allowed in Python, but since the
+            # AbstractModel and ConcreteModel are basically identical, we
+            # can "reassign" the new concrete instance to be an instance of
+            # ConcreteModel
+            #
+            instance.__class__ = ConcreteModel
         return instance
 
     @deprecated(
@@ -789,7 +792,7 @@ arguments (which have been ignored):"""
             profile_memory = kwds.get('profile_memory', 0)
 
             if profile_memory >= 2 and pympler_available:
-                mem_used = pympler.muppy.get_size(muppy.get_objects())
+                mem_used = pympler.muppy.get_size(pympler.muppy.get_objects())
                 print("")
                 print(
                     "      Total memory = %d bytes prior to model "
@@ -798,7 +801,7 @@ arguments (which have been ignored):"""
 
                 if profile_memory >= 3:
                     gc.collect()
-                    mem_used = pympler.muppy.get_size(muppy.get_objects())
+                    mem_used = pympler.muppy.get_size(pympler.muppy.get_objects())
                     print(
                         "      Total memory = %d bytes prior to model "
                         "construction (after garbage collection)" % mem_used
@@ -877,6 +880,7 @@ arguments (which have been ignored):"""
                 str(data).strip(),
                 type(err).__name__,
                 err,
+                extra={'cleandoc': False},
             )
             raise
 

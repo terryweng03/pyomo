@@ -1,17 +1,16 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 """
 This module defines the classes that provide an NLP interface based on
 the Ampl Solver Library (ASL) implementation
 """
+
 try:
     import pyomo.contrib.pynumero.asl as _asl
 except ImportError as e:
@@ -27,10 +26,8 @@ import numpy as np
 from pyomo.common.deprecation import deprecated
 from pyomo.contrib.pynumero.interfaces.nlp import ExtendedNLP
 
-__all__ = ['AslNLP', 'AmplNLP']
 
-
-# ToDo: need to add support for modifying bounds.
+# TODO: need to add support for modifying bounds.
 # support for changing variable bounds seems possible.
 # support for changing inequality bounds would require more work. (this is less frequent?)
 # TODO: check performance impacts of caching - memory and computational time.

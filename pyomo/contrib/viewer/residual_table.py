@@ -1,51 +1,63 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
-#  This module was originally developed as part of the IDAES PSE Framework
+# This module was originally developed as part of the IDAES PSE Framework
 #
-#  Institute for the Design of Advanced Energy Systems Process Systems
-#  Engineering Framework (IDAES PSE Framework) Copyright (c) 2018-2019, by the
-#  software owners: The Regents of the University of California, through
-#  Lawrence Berkeley National Laboratory,  National Technology & Engineering
-#  Solutions of Sandia, LLC, Carnegie Mellon University, West Virginia
-#  University Research Corporation, et al. All rights reserved.
+# Institute for the Design of Advanced Energy Systems Process Systems
+# Engineering Framework (IDAES PSE Framework) Copyright (c) 2018-2019, by the
+# software owners: The Regents of the University of California, through
+# Lawrence Berkeley National Laboratory,  National Technology & Engineering
+# Solutions of Sandia, LLC, Carnegie Mellon University, West Virginia
+# University Research Corporation, et al. All rights reserved.
 #
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """
 A simple GUI viewer/editor for Pyomo models.
 """
+
 __author__ = "John Eslick"
 
 import os
 import logging
 
-_log = logging.getLogger(__name__)
+from pyomo.common.fileutils import this_file_dir
+from pyomo.common.flags import building_documentation
+from pyomo.contrib.viewer.report import value_no_exception, get_residual
 
 import pyomo.contrib.viewer.qt as myqt
-from pyomo.contrib.viewer.report import value_no_exception, get_residual
 import pyomo.environ as pyo
-from pyomo.common.fileutils import this_file_dir
 
-mypath = this_file_dir()
-try:
-    _ResidualTableUI, _ResidualTable = myqt.uic.loadUiType(
-        os.path.join(mypath, "residual_table.ui")
-    )
-except:
+_log = logging.getLogger(__name__)
 
-    class _ResidualTableUI(object):
-        pass
 
-    class _ResidualTable(object):
+# This lets the file be imported when the Qt UI is not available (or
+# when building docs), but you won't be able to use it
+class _ResidualTableUI:
+    pass
+
+
+class _ResidualTable:
+    pass
+
+
+# Note that the classes loaded here have signatures that are not
+# parsable by Sphinx, so we won't attempt to import them if we are
+# building the API documentation.
+if not building_documentation():
+    mypath = this_file_dir()
+    try:
+        _ResidualTableUI, _ResidualTable = myqt.uic.loadUiType(
+            os.path.join(mypath, "residual_table.ui")
+        )
+    except:
         pass
 
 
@@ -102,10 +114,12 @@ class ResidualDataModel(myqt.QAbstractTableModel):
         self._items.sort(
             key=lambda o: (
                 o is None,
-                get_residual(self.ui_data, o)
-                if get_residual(self.ui_data, o) is not None
-                and not isinstance(get_residual(self.ui_data, o), str)
-                else _inactive_to_back(o),
+                (
+                    get_residual(self.ui_data, o)
+                    if get_residual(self.ui_data, o) is not None
+                    and not isinstance(get_residual(self.ui_data, o), str)
+                    else _inactive_to_back(o)
+                ),
             ),
             reverse=True,
         )

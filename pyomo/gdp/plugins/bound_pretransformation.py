@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.common.collections import ComponentMap, ComponentSet
 from pyomo.common.config import ConfigDict, ConfigValue
@@ -185,7 +183,7 @@ class BoundPretransformation(Transformation):
                 )
                 if coef < 0:
                     # we divided by a negative coef above, so flip the constraint
-                    (lower, upper) = (upper, lower)
+                    lower, upper = (upper, lower)
                 v_bounds = self._get_bound_dict_for_var(bound_dict, v)
                 self._update_bounds_dict(
                     v_bounds,
@@ -217,7 +215,7 @@ class BoundPretransformation(Transformation):
         return lb, ub
 
     def _update_bounds_dict(self, v_bounds, lower, upper, disjunct, gdp_forest):
-        (lb, ub) = self._get_tightest_ancestral_bounds(v_bounds, disjunct, gdp_forest)
+        lb, ub = self._get_tightest_ancestral_bounds(v_bounds, disjunct, gdp_forest)
         if lower is not None:
             if lb is None or lower > lb:
                 # This GDP is more constrained here than it was in the parent
@@ -244,9 +242,9 @@ class BoundPretransformation(Transformation):
                 disjunction, transformation_blocks
             )
             if self.transformation_name not in disjunction._transformation_map:
-                disjunction._transformation_map[
-                    self.transformation_name
-                ] = ComponentMap()
+                disjunction._transformation_map[self.transformation_name] = (
+                    ComponentMap()
+                )
             trans_map = disjunction._transformation_map[self.transformation_name]
 
             for disj in disjunction.disjuncts:
@@ -266,7 +264,7 @@ class BoundPretransformation(Transformation):
                 deactivate_lower = ComponentSet()
                 deactivate_upper = ComponentSet()
                 for disj in disjunction.disjuncts:
-                    (lb, ub) = self._get_tightest_ancestral_bounds(
+                    lb, ub = self._get_tightest_ancestral_bounds(
                         v_bounds, disj, gdp_forest
                     )
                     if lb is None:

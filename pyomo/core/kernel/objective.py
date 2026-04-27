@@ -1,22 +1,17 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
+from pyomo.common.enums import ObjectiveSense, minimize, maximize
 from pyomo.core.expr.numvalue import as_numeric
 from pyomo.core.kernel.base import _abstract_readwrite_property
 from pyomo.core.kernel.container_utils import define_simple_containers
 from pyomo.core.kernel.expression import IExpression
-
-# Constants used to define the optimization sense
-minimize = 1
-maximize = -1
 
 
 class IObjective(IExpression):
@@ -84,14 +79,7 @@ class objective(IObjective):
     @sense.setter
     def sense(self, sense):
         """Set the sense (direction) of this objective."""
-        if (sense == minimize) or (sense == maximize):
-            self._sense = sense
-        else:
-            raise ValueError(
-                "Objective sense must be set to one of: "
-                "[minimize (%s), maximize (%s)]. Invalid "
-                "value: %s'" % (minimize, maximize, sense)
-            )
+        self._sense = ObjectiveSense(sense)
 
 
 # inserts class definitions for simple _tuple, _list, and

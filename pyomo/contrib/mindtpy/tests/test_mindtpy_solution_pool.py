@@ -1,4 +1,14 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 """Tests for solution pool in the MindtPy solver."""
+
 from pyomo.core.expr.calculus.diff_with_sympy import differentiate_available
 import pyomo.common.unittest as unittest
 from pyomo.contrib.mindtpy.tests.eight_process_problem import EightProcessFlowsheet
@@ -8,7 +18,6 @@ from pyomo.contrib.mindtpy.tests.constraint_qualification_example import (
 )
 from pyomo.environ import SolverFactory, value, maximize
 from pyomo.opt import TerminationCondition
-
 
 model_list = [
     EightProcessFlowsheet(convex=True),

@@ -1,3 +1,12 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 from pyomo.contrib.piecewise.piecewise_linear_expression import (
     PiecewiseLinearExpression,
 )
@@ -22,3 +31,15 @@ from pyomo.contrib.piecewise.transform.reduced_inner_representation_gdp import (
 from pyomo.contrib.piecewise.transform.convex_combination import (
     ConvexCombinationTransformation,
 )
+from pyomo.contrib.piecewise.transform.nonlinear_to_pwl import (
+    DomainPartitioningMethod,
+    NonlinearToPWL,
+)
+from pyomo.contrib.piecewise.transform.nested_inner_repn import (
+    NestedInnerRepresentationGDPTransformation,
+)
+from pyomo.contrib.piecewise.transform.disaggregated_logarithmic import (
+    DisaggregatedLogarithmicMIPTransformation,
+)
+from pyomo.contrib.piecewise.transform.incremental import IncrementalMIPTransformation
+from pyomo.contrib.piecewise.triangulations import Triangulation

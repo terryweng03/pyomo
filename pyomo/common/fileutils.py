@@ -1,20 +1,18 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
-#  This module was originally developed as part of the PyUtilib project
-#  Copyright (c) 2008 Sandia Corporation.
-#  This software is distributed under the BSD License.
-#  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-#  the U.S. Government retains certain rights in this software.
-#  ___________________________________________________________________________
+# This module was originally developed as part of the PyUtilib project
+# Copyright (c) 2008 Sandia Corporation.
+# This software is distributed under the BSD License.
+# Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
+# the U.S. Government retains certain rights in this software.
+# ____________________________________________________________________________________
 
 """This module provides general utilities for working with the file system
 
@@ -32,16 +30,17 @@
    PathData
 """
 
-import ctypes.util
 import glob
 import inspect
 import logging
 import os
 import platform
 import importlib.util
+import subprocess
 import sys
 
 from . import envvar
+from .dependencies import ctypes
 from .deprecation import deprecated, relocated_module_attribute
 
 relocated_module_attribute('StreamIndenter', 'pyomo.common.formatting', version='6.2')
@@ -285,10 +284,17 @@ def find_dir(
     )
 
 
-_exeExt = {'linux': None, 'windows': '.exe', 'cygwin': '.exe', 'darwin': None}
+_exeExt = {
+    'linux': None,
+    'freebsd': None,
+    'windows': '.exe',
+    'cygwin': '.exe',
+    'darwin': None,
+}
 
 _libExt = {
     'linux': ('.so', '.so.*'),
+    'freebsd': ('.so', '.so.*'),
     'windows': ('.dll', '.pyd'),
     'cygwin': ('.dll', '.so', '.so.*'),
     'darwin': ('.dylib', '.so', '.so.*'),
@@ -375,9 +381,27 @@ def find_library(libname, cwd=True, include_PATH=True, pathlist=None):
     if libname_base.startswith('lib') and _system() != 'windows':
         libname_base = libname_base[3:]
     if ext.lower().startswith(('.so', '.dll', '.dylib')):
-        return ctypes.util.find_library(libname_base)
+        lib = ctypes.util.find_library(libname_base)
     else:
-        return ctypes.util.find_library(libname)
+        lib = ctypes.util.find_library(libname)
+    if lib and os.path.sep not in lib:
+        # work around https://github.com/python/cpython/issues/65241,
+        # where python does not return the absolute path on *nix
+        try:
+            libname = lib + ' '
+            with subprocess.Popen(
+                ['/sbin/ldconfig', '-p'],
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                env={'LC_ALL': 'C', 'LANG': 'C'},
+            ) as p:
+                for line in os.fsdecode(p.stdout.read()).splitlines():
+                    if line.lstrip().startswith(libname):
+                        return os.path.realpath(line.split()[-1])
+        except:
+            pass
+    return lib
 
 
 def find_executable(exename, cwd=True, include_PATH=True, pathlist=None):
@@ -479,7 +503,51 @@ def import_file(path, clear_cache=False, infer_package=True, module_name=None):
     return module
 
 
-class PathData(object):
+def to_legal_filename(name, universal=False) -> str:
+    """Convert a string to a legal filename on the current platform.
+
+    This converts a candidate file name (not a path) and converts it to
+    a legal file name on the current platform.  This includes replacing
+    any unallowable characters (including the path separator) with
+    underscores (``_``), and on some platforms, enforcing restrictions
+    on the allowable final character.
+
+    Parameters
+    ----------
+    name : str
+
+        The original (desired) file name
+
+    universal : bool
+
+        If True, this will attempt a form of "universal" standardization
+        that uses the most restrictive set of character translations and
+        rules.  Currently, ``universal=True`` is equivalent to running
+        the Windows translations.
+
+    """
+    if envvar.is_windows or universal:
+        tr = getattr(to_legal_filename, 'tr', None)
+        if tr is None:
+            # Windows illegal characters: 0-31, plus < > : " / \ | ? *
+            _illegal = r'<>:"/\|?*' + ''.join(map(chr, range(32)))
+            tr = to_legal_filename.tr = str.maketrans(_illegal, '_' * len(_illegal))
+        # Remove illegal characters
+        name = name.translate(tr)
+        if name:
+            # Windows allows filenames to end with space or dot, but the
+            # file explorer can't interact with them
+            if name[-1] in ' .':
+                name = name[:-1] + '_'
+            # Similarly, starting with a space is generally a bad idea
+            if name[0] == ' ':
+                name = '_' + name[1:]
+    else:
+        name = name.replace('/', '_').replace(chr(0), '_')
+    return name
+
+
+class PathData:
     """An object for storing and managing a :py:class:`PathManager` path"""
 
     def __init__(self, manager, name):
@@ -584,7 +652,7 @@ class ExecutableData(PathData):
         self.set_path(value)
 
 
-class PathManager(object):
+class PathManager:
     """The PathManager defines a registry class for path locations
 
     The :py:class:`PathManager` defines a class very similar to the
@@ -687,7 +755,7 @@ class PathManager(object):
 
     The ``Executable`` singleton uses :py:class:`ExecutableData`, an
     extended form of the :py:class:`PathData` class, which provides the
-    ``executable`` property as an alais for :py:meth:`path()` and
+    ``executable`` property as an alias for :py:meth:`path()` and
     :py:meth:`set_path()`:
 
     .. doctest::
@@ -715,11 +783,13 @@ class PathManager(object):
 
     def __call__(self, path):
         if path not in self._pathTo:
+            if isinstance(path, self._dataClass):
+                return path
             self._pathTo[path] = self._dataClass(self, path)
         return self._pathTo[path]
 
     def rehash(self):
-        """Requery the location of all registered executables
+        """Requery the location of all registered paths
 
         This method derives its name from the csh command of the same
         name, which rebuilds the hash table of executables reachable
@@ -733,8 +803,56 @@ class PathManager(object):
 #
 # Define singleton objects for Pyomo / Users to interact with
 #
-Executable = PathManager(find_executable, ExecutableData)
-Library = PathManager(find_library, PathData)
+class Executable:
+    """Singleton executable registry
+
+    This class cannot be instantiated.  Instead, calling this type will
+    perform lookups in the underlying singleton :class:`PathManager`
+    object and return instances of :class:`ExecutableData`.
+
+    """
+
+    _manager = PathManager(find_executable, ExecutableData)
+
+    def __new__(cls, path) -> ExecutableData:
+        return cls._manager(path)
+
+    @classmethod
+    def rehash(cls):
+        """Requery the location of all registered executable paths
+
+        This method derives its name from the csh command of the same
+        name, which rebuilds the hash table of executables reachable
+        through the PATH.
+
+        """
+        return cls._manager.rehash()
+
+
+class Library:
+    """Singleton library registry
+
+    This class cannot be instantiated.  Instead, calling this type will
+    perform lookups in the underlying singleton :class:`PathManager`
+    object and return instances of :class:`PathData`.
+
+    """
+
+    _manager = PathManager(find_library, PathData)
+
+    def __new__(cls, path) -> PathData:
+        return cls._manager(path)
+
+    @classmethod
+    def rehash(cls):
+        """Requery the location of all registered library paths
+
+        This method derives its name from the csh command of the same
+        name, which rebuilds the hash table of executables reachable
+        through the PATH.
+
+        """
+        return cls._manager.rehash()
 
 
 @deprecated(

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 """
 The cyipopt_interface module includes the python interface to the
 Cythonized ipopt solver cyipopt (see more:
@@ -20,9 +18,12 @@ that works with problems derived from AslNLP as long as those
 classes return numpy ndarray objects for the vectors and coo_matrix
 objects for the matrices (e.g., AmplNLP and PyomoNLP)
 """
+
 import abc
+import inspect
 
 from pyomo.common.dependencies import attempt_import, numpy as np, numpy_available
+from pyomo.contrib.pynumero.exceptions import PyNumeroEvaluationError
 
 
 def _cyipopt_importer():
@@ -252,7 +253,7 @@ class CyIpoptProblemInterface(cyipopt_Problem, metaclass=abc.ABCMeta):
 
 
 class CyIpoptNLP(CyIpoptProblemInterface):
-    def __init__(self, nlp, intermediate_callback=None):
+    def __init__(self, nlp, intermediate_callback=None, halt_on_evaluation_error=None):
         """This class provides a CyIpoptProblemInterface for use
         with the CyIpoptSolver class that can take in an NLP
         as long as it provides vectors as numpy ndarrays and
@@ -262,6 +263,23 @@ class CyIpoptNLP(CyIpoptProblemInterface):
         """
         self._nlp = nlp
         self._intermediate_callback = intermediate_callback
+
+        cyipopt_has_eval_error = cyipopt_available and hasattr(
+            cyipopt, "CyIpoptEvaluationError"
+        )
+        if halt_on_evaluation_error is None:
+            # If using cyipopt >= 1.3, the default is to continue.
+            # Otherwise, the default is to halt (because we are forced to).
+            #
+            # If CyIpopt is not available, we "halt" (re-raise the original
+            # exception).
+            self._halt_on_evaluation_error = not cyipopt_has_eval_error
+        elif not halt_on_evaluation_error and not cyipopt_has_eval_error:
+            raise ValueError(
+                "halt_on_evaluation_error=False is only supported for cyipopt >= 1.3.0"
+            )
+        else:
+            self._halt_on_evaluation_error = halt_on_evaluation_error
 
         x = nlp.init_primals()
         y = nlp.init_duals()
@@ -290,6 +308,49 @@ class CyIpoptNLP(CyIpoptProblemInterface):
         # Call CyIpoptProblemInterface.__init__, which calls
         # cyipopt.Problem.__init__
         super(CyIpoptNLP, self).__init__()
+
+        # Pre-Pyomo 6.8.0, we had no way to pass the cyipopt.Problem object
+        # to the user in an intermediate callback. This prevented them from calling
+        # the useful get_current_iterate and get_current_violations methods. Now,
+        # we support this by adding the Problem object to the args we pass to a user's
+        # callback. To preserve backwards compatibility, we inspect the user's
+        # callback to infer whether they want this argument. To preserve backwards
+        # compatibility if the user asked for variable-length *args, we do not pass
+        # the Problem object as an argument in this case.
+        # A more maintainable solution may be to force users to accept **kwds if they
+        # want "extra info." If we find ourselves continuing to augment this callback,
+        # this may be worth considering. -RBP
+        self._use_13arg_callback = None
+        if self._intermediate_callback is not None:
+            signature = inspect.signature(self._intermediate_callback)
+            positional_kinds = {
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.POSITIONAL_ONLY,
+            }
+            positional = [
+                param
+                for param in signature.parameters.values()
+                if param.kind in positional_kinds
+            ]
+            has_var_args = any(
+                p.kind is inspect.Parameter.VAR_POSITIONAL
+                for p in signature.parameters.values()
+            )
+
+            if len(positional) == 13 and not has_var_args:
+                # If *args is expected, we do not use the new callback
+                # signature.
+                self._use_13arg_callback = True
+            elif len(positional) == 12 or has_var_args:
+                # If *args is expected, we use the old callback signature
+                # for backwards compatibility.
+                self._use_13arg_callback = False
+            else:
+                raise ValueError(
+                    "Invalid intermediate callback. A function with either 12 or 13"
+                    " positional arguments, or a variable number of arguments, is"
+                    " expected."
+                )
 
     def _set_primals_if_necessary(self, x):
         if not np.array_equal(x, self._cached_x):
@@ -328,24 +389,54 @@ class CyIpoptNLP(CyIpoptProblemInterface):
         return obj_scaling, x_scaling, g_scaling
 
     def objective(self, x):
-        self._set_primals_if_necessary(x)
-        return self._nlp.evaluate_objective()
+        try:
+            self._set_primals_if_necessary(x)
+            return self._nlp.evaluate_objective()
+        except PyNumeroEvaluationError:
+            if self._halt_on_evaluation_error:
+                raise
+            else:
+                raise cyipopt.CyIpoptEvaluationError(
+                    "Error in objective function evaluation"
+                )
 
     def gradient(self, x):
-        self._set_primals_if_necessary(x)
-        return self._nlp.evaluate_grad_objective()
+        try:
+            self._set_primals_if_necessary(x)
+            return self._nlp.evaluate_grad_objective()
+        except PyNumeroEvaluationError:
+            if self._halt_on_evaluation_error:
+                raise
+            else:
+                raise cyipopt.CyIpoptEvaluationError(
+                    "Error in objective gradient evaluation"
+                )
 
     def constraints(self, x):
-        self._set_primals_if_necessary(x)
-        return self._nlp.evaluate_constraints()
+        try:
+            self._set_primals_if_necessary(x)
+            return self._nlp.evaluate_constraints()
+        except PyNumeroEvaluationError:
+            if self._halt_on_evaluation_error:
+                raise
+            else:
+                raise cyipopt.CyIpoptEvaluationError("Error in constraint evaluation")
 
     def jacobianstructure(self):
         return self._jac_g.row, self._jac_g.col
 
     def jacobian(self, x):
-        self._set_primals_if_necessary(x)
-        self._nlp.evaluate_jacobian(out=self._jac_g)
-        return self._jac_g.data
+        try:
+            self._set_primals_if_necessary(x)
+            self._nlp.evaluate_jacobian(out=self._jac_g)
+            return self._jac_g.data
+        except PyNumeroEvaluationError:
+            if self._halt_on_evaluation_error:
+                raise
+            else:
+                raise cyipopt.CyIpoptEvaluationError(
+                    "Error in constraint Jacobian evaluation"
+                )
 
     def hessianstructure(self):
         if not self._hessian_available:
@@ -359,12 +450,20 @@ class CyIpoptNLP(CyIpoptProblemInterface):
         if not self._hessian_available:
             raise ValueError("Hessian requested, but not supported by the NLP")
 
-        self._set_primals_if_necessary(x)
-        self._set_duals_if_necessary(y)
-        self._set_obj_factor_if_necessary(obj_factor)
-        self._nlp.evaluate_hessian_lag(out=self._hess_lag)
-        data = np.compress(self._hess_lower_mask, self._hess_lag.data)
-        return data
+        try:
+            self._set_primals_if_necessary(x)
+            self._set_duals_if_necessary(y)
+            self._set_obj_factor_if_necessary(obj_factor)
+            self._nlp.evaluate_hessian_lag(out=self._hess_lag)
+            data = np.compress(self._hess_lower_mask, self._hess_lag.data)
+            return data
+        except PyNumeroEvaluationError:
+            if self._halt_on_evaluation_error:
+                raise
+            else:
+                raise cyipopt.CyIpoptEvaluationError(
+                    "Error in Lagrangian Hessian evaluation"
+                )
 
     def intermediate(
         self,
@@ -380,19 +479,53 @@ class CyIpoptNLP(CyIpoptProblemInterface):
         alpha_pr,
         ls_trials,
     ):
+        """Calls user's intermediate callback
+
+        This method has the call signature expected by CyIpopt. We then extend
+        this call signature to provide users of this interface class additional
+        functionality. Additional arguments are:
+
+        - The ``NLP`` object that was used to construct this class instance.
+          This is useful for querying the variables, constraints, and
+          derivatives during the callback.
+        - The class instance itself. This is useful for calling the
+          ``get_current_iterate`` and ``get_current_violations`` methods, which
+          query Ipopt's internal data structures to provide this information.
+
+        """
         if self._intermediate_callback is not None:
-            return self._intermediate_callback(
-                self._nlp,
-                alg_mod,
-                iter_count,
-                obj_value,
-                inf_pr,
-                inf_du,
-                mu,
-                d_norm,
-                regularization_size,
-                alpha_du,
-                alpha_pr,
-                ls_trials,
-            )
+            if self._use_13arg_callback:
+                # This is the callback signature expected as of Pyomo 6.8.0
+                return self._intermediate_callback(
+                    self._nlp,
+                    self,
+                    alg_mod,
+                    iter_count,
+                    obj_value,
+                    inf_pr,
+                    inf_du,
+                    mu,
+                    d_norm,
+                    regularization_size,
+                    alpha_du,
+                    alpha_pr,
+                    ls_trials,
+                )
+            else:
+                # This is the callback signature expected pre-Pyomo 6.8.0 and
+                # is supported for backwards compatibility.
+                return self._intermediate_callback(
+                    self._nlp,
+                    alg_mod,
+                    iter_count,
+                    obj_value,
+                    inf_pr,
+                    inf_du,
+                    mu,
+                    d_norm,
+                    regularization_size,
+                    alpha_du,
+                    alpha_pr,
+                    ls_trials,
+                )
         return True

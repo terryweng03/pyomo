@@ -1,15 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
-
-__all__ = ['convert_problem']
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import copy
 import os
@@ -17,7 +13,6 @@ import os
 from pyomo.opt.base.formats import guess_format
 from pyomo.opt.base.error import ConverterError
 from pyomo.common import Factory
-
 
 # WEH - Should we treat these as singleton objects?  Not for now, since
 # I can't think of a case where that would impact performance
@@ -29,7 +24,7 @@ def convert_problem(
     target_problem_type,
     valid_problem_types,
     has_capability=lambda x: False,
-    **kwds
+    **kwds,
 ):
     """
     Convert a problem, defined by the 'args' tuple, into another
@@ -55,7 +50,7 @@ def convert_problem(
         if os.sep in fname:  # pragma:nocover
             fname = tmp.split(os.sep)[-1]
         source_ptype = [guess_format(fname)]
-        if source_ptype is [None]:
+        if source_ptype == [None]:
             raise ConverterError("Unknown suffix type: " + tmp)
     else:
         source_ptype = args[0].valid_problem_types()

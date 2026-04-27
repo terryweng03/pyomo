@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import argparse
 import gc
@@ -146,7 +144,7 @@ def setup_environment(data):
             if valueStr[0] == valueStr[-1] and valueStr[0] in "\"'":
                 valueStr = valueStr[1:-1]
 
-        logger.error(msg + valueStr)
+        logger.error(msg + valueStr, extra={'cleandoc': False})
 
         tb_list = traceback.extract_tb(tb, None)
         i = 0
@@ -512,7 +510,7 @@ def create_model(data):
             io_options['symbolic_solver_labels'] = True
         if data.options.model.file_determinism is not None:
             io_options['file_determinism'] = data.options.model.file_determinism
-        (fname, smap_id) = instance.write(
+        fname, smap_id = instance.write(
             filename=fname, format=format, io_options=io_options
         )
 
@@ -912,7 +910,7 @@ def configure_loggers(options=None, shutdown=False):
 configure_loggers.fileLogger = None
 
 
-class PyomoCommandLogContext(object):
+class PyomoCommandLogContext:
     """Context manager to setup/restore logging for the Pyomo command"""
 
     def __init__(self, options):
@@ -971,30 +969,45 @@ class PyomoCommandLogContext(object):
 def run_command(
     command=None, parser=None, args=None, name='unknown', data=None, options=None
 ):
-    """
-    Execute a function that processes command-line arguments and
+    """Execute a function that processes command-line arguments and
     then calls a command-line driver.
 
     This function provides a generic facility for executing a command
     function is rather generic.  This function is segregated from
     the driver to enable profiling of the command-line execution.
 
-    Required:
-        command:    The name of a function that will be executed to perform process the command-line
-                    options with a parser object.
-        parser:     The parser object that is used by the command-line function.
+    Parameters
+    ----------
+    command:
 
-    Optional:
-        options:    If this is not None, then ignore the args option and use
-                    this to specify command options.
-        args:       Command-line arguments that are parsed.  If this value is `None`, then the
-                    arguments in `sys.argv` are used to parse the command-line.
-        name:       Specifying the name of the command-line (for error messages).
-        data:       A container of labeled data.
+        The name of a function that will be executed to perform process
+        the command-line options with a parser object.
 
-    Returned:
-        retval:     Return values from the command-line execution.
-        errorcode:  0 if Pyomo ran successfully
+    parser:
+        The parser object that is used by the command-line function.
+
+    options:
+        If this is not None, then ignore the args option and use this to
+        specify command options.
+
+    args:
+        Command-line arguments that are parsed.  If this value is
+        `None`, then the arguments in `sys.argv` are used to parse the
+        command-line.
+
+    name:
+        Specifying the name of the command-line (for error messages).
+
+    data:
+        A container of labeled data.
+
+    Returns
+    -------
+    retval:
+        Return values from the command-line execution.
+    errorcode:
+        0 if Pyomo ran successfully
+
     """
     #
     #
@@ -1129,7 +1142,7 @@ def _run_command_impl(command, parser, args, name, data, options):
             if type(err) == KeyError and errStr != "None":
                 errStr = str(err).replace(r"\n", "\n")[1:-1]
 
-            logger.error(msg + errStr)
+            logger.error(msg + errStr, extra={'cleandoc': False})
             errorcode = 1
 
     return retval, errorcode

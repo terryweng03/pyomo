@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import pyomo.environ as pyo
 import pyomo.dae as dae
@@ -499,6 +497,23 @@ class TestSolveSCC(unittest.TestCase):
         self.assertAlmostEqual(m.x[1].value, 0.56714329)
         self.assertAlmostEqual(m.x[2].value, 3.21642835)
         self.assertEqual(m.x[3].value, 1.0)
+
+
+@unittest.skipUnless(scipy_available, "SciPy is not available")
+@unittest.skipUnless(networkx_available, "NetworkX is not available")
+class TestExceptions(unittest.TestCase):
+    def test_nonsquare_system(self):
+        m = pyo.ConcreteModel()
+        m.x = pyo.Var([1, 2], initialize=1)
+        m.eq = pyo.Constraint(expr=m.x[1] + m.x[2] == 1)
+
+        msg = "Got 2 variables and 1 constraints"
+        with self.assertRaisesRegex(RuntimeError, msg):
+            list(
+                generate_strongly_connected_components(
+                    constraints=[m.eq], variables=[m.x[1], m.x[2]]
+                )
+            )
 
 
 if __name__ == "__main__":

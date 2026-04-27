@@ -1,20 +1,18 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
-#  This module was originally developed as part of the PyUtilib project
-#  Copyright (c) 2008 Sandia Corporation.
-#  This software is distributed under the BSD License.
-#  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-#  the U.S. Government retains certain rights in this software.
-#  ___________________________________________________________________________
+# This module was originally developed as part of the PyUtilib project
+# Copyright (c) 2008 Sandia Corporation.
+# This software is distributed under the BSD License.
+# Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
+# the U.S. Government retains certain rights in this software.
+# ____________________________________________________________________________________
 
 """A module of utilities for collecting timing information
 
@@ -44,33 +42,62 @@ _construction_logger = logging.getLogger('pyomo.common.timing.construction')
 _transform_logger = logging.getLogger('pyomo.common.timing.transformation')
 
 
-def report_timing(stream=True, level=logging.INFO):
-    """Set reporting of Pyomo timing information.
+class report_timing:
+    def __init__(self, stream=True, level=logging.INFO):
+        """Set reporting of Pyomo timing information.
 
-    Parameters
-    ----------
-    stream: bool, TextIOBase
-        The destination stream to emit timing information.  If ``True``,
-        defaults to ``sys.stdout``.  If ``False`` or ``None``, disables
-        reporting of timing information.
-    level: int
-        The logging level for the timing logger
-    """
-    if stream:
-        _logger.setLevel(level)
-        if stream is True:
-            stream = sys.stdout
-        handler = logging.StreamHandler(stream)
-        handler.setFormatter(logging.Formatter("      %(message)s"))
-        _logger.addHandler(handler)
-        return handler
-    else:
-        _logger.setLevel(logging.WARNING)
-        for h in _logger.handlers:
-            _logger.removeHandler(h)
+        For historical reasons, this class may be used as a function
+        (the reporting logger is configured as part of the instance
+        initializer).  However, the preferred usage is as a context
+        manager (thereby ensuring that the timing logger is restored
+        upon exit).
+
+        Parameters
+        ----------
+        stream: bool, TextIOBase
+
+            The destination stream to emit timing information.  If
+            ``True``, defaults to ``sys.stdout``.  If ``False`` or
+            ``None``, disables reporting of timing information.
+
+        level: int
+
+            The logging level for the timing logger
+
+        """
+        self._old_level = _logger.level
+        # For historical reasons (because report_timing() used to be a
+        # function), we will do what you think should be done in
+        # __enter__ here in __init__.
+        if stream:
+            _logger.setLevel(level)
+            if stream is True:
+                stream = sys.stdout
+            self._handler = logging.StreamHandler(stream)
+            self._handler.setFormatter(logging.Formatter("      %(message)s"))
+            _logger.addHandler(self._handler)
+        else:
+            self._handler = list(_logger.handlers)
+            _logger.setLevel(logging.WARNING)
+            for h in list(_logger.handlers):
+                _logger.removeHandler(h)
+
+    def reset(self):
+        _logger.setLevel(self._old_level)
+        if type(self._handler) is list:
+            for h in self._handler:
+                _logger.addHandler(h)
+        else:
+            _logger.removeHandler(self._handler)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, et, ev, tb):
+        self.reset()
 
 
-class GeneralTimer(object):
+class GeneralTimer:
     def __init__(self, fmt, data):
         self.fmt = fmt
         self.data = data
@@ -90,7 +117,7 @@ class GeneralTimer(object):
         return self.fmt % self.data
 
 
-class ConstructionTimer(object):
+class ConstructionTimer:
     __slots__ = ('obj', 'timer')
     msg = "%6.*f seconds to construct %s %s%s"
     in_progress = "ConstructionTimer object for %s %s; %0.3f elapsed seconds"
@@ -155,7 +182,7 @@ class ConstructionTimer(object):
         )
 
 
-class TransformationTimer(object):
+class TransformationTimer:
     __slots__ = ('obj', 'mode', 'timer')
     msg = "%6.*f seconds to apply Transformation %s%s"
     in_progress = "TransformationTimer object for %s%s; %0.3f elapsed seconds"
@@ -194,22 +221,17 @@ class TransformationTimer(object):
 #
 # Setup the timer
 #
-# TODO: Remove this bit for Pyomo 6.0 - we won't care about older versions
-if sys.version_info >= (3, 3):
-    # perf_counter is guaranteed to be monotonic and the most accurate timer
-    default_timer = time.perf_counter
-elif sys.platform.startswith('win'):
-    # On old Pythons, clock() is more accurate than time() on Windows
-    # (.35us vs 15ms), but time() is more accurate than clock() on Linux
-    # (1ns vs 1us).  It is unfortunate that time() is not monotonic, but
-    # since the TicTocTimer is used for (potentially very accurate)
-    # timers, we will sacrifice monotonicity on Linux for resolution.
-    default_timer = time.clock
-else:
-    default_timer = time.time
+# perf_counter is guaranteed to be monotonic and the most accurate
+# timer.  It became available in Python 3.3.  Prior to that, clock() was
+# more accurate than time() on Windows (.35us vs 15ms), but time() was
+# more accurate than clock() on Linux (1ns vs 1us).  It is unfortunate
+# that time() is not monotonic, but since the TicTocTimer is used for
+# (potentially very accurate) timers, we will sacrifice monotonicity on
+# Linux for resolution.
+default_timer = time.perf_counter
 
 
-class TicTocTimer(object):
+class TicTocTimer:
     """A class to calculate and report elapsed time.
 
     Examples:
@@ -323,6 +345,11 @@ class TicTocTimer(object):
             level (int): an optional logging output level.
         """
 
+        # Note: important to do this first so that we don't add a random
+        # amount of time for I/O operations or extracting the stack.
+        # This helps ensure that the timing tests are less fragile.
+        now = default_timer()
+
         if msg is _NotSpecified:
             msg = 'File "%s", line %s in %s' % traceback.extract_stack(limit=2)[0][:3]
         if args and msg is not None and '%' not in msg:
@@ -341,11 +368,10 @@ class TicTocTimer(object):
             if args:
                 logger, *args = args
 
-        now = default_timer()
         if self._start_count or self._lastTime is None:
             ans = self._cumul
             if self._lastTime:
-                ans += default_timer() - self._lastTime
+                ans += now - self._lastTime
             if msg is not None:
                 fmt = "[%8.2f|%4d] %s"
                 data = (ans, self._start_count, msg)
@@ -478,7 +504,7 @@ def _clear_timers_except(timer, to_retain):
             timer.timers.pop(key)
 
 
-class _HierarchicalHelper(object):
+class _HierarchicalHelper:
     def __init__(self):
         self.tic_toc = TicTocTimer()
         self.timers = dict()
@@ -561,7 +587,7 @@ class _HierarchicalHelper(object):
         _clear_timers_except(self, to_retain)
 
 
-class HierarchicalTimer(object):
+class HierarchicalTimer:
     """A class for collecting and displaying hierarchical timing
     information
 

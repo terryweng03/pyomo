@@ -1,3 +1,12 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 # scholtes4.py	LQR2-MN-3-2
 # Original Pyomo coding by William Hart
 # Adapted from AMPL coding by Sven Leyffer
@@ -9,7 +18,6 @@
 
 from pyomo.environ import *
 from pyomo.mpec import *
-
 
 model = ConcreteModel()
 

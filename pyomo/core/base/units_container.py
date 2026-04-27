@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
 #
 
@@ -101,6 +99,7 @@ information.
           data and reporting.
 
 """
+
 # TODO
 #    * create a new pint unit definition file (and load from that file)
 #       since the precision in pint seems insufficient for 1e-8 constraint tolerances
@@ -111,28 +110,19 @@ information.
 import logging
 import sys
 
-from pyomo.common.dependencies import attempt_import
+from pyomo.common.dependencies import pint as pint_module, pint_available
 from pyomo.common.modeling import NOTSET
+from pyomo.core.expr.expr_common import _type_check_exception_arg
 from pyomo.core.expr.numvalue import (
     NumericValue,
     nonpyomo_leaf_types,
     value,
     native_types,
     native_numeric_types,
-    pyomo_constant_types,
 )
 from pyomo.core.expr.template_expr import IndexTemplate
 from pyomo.core.expr.visitor import ExpressionValueVisitor
 import pyomo.core.expr as EXPR
-
-pint_module, pint_available = attempt_import(
-    'pint',
-    defer_check=True,
-    error_message=(
-        'The "pint" package failed to import. '
-        'This package is necessary to use Pyomo units.'
-    ),
-)
 
 logger = logging.getLogger(__name__)
 
@@ -394,7 +384,7 @@ class _PyomoUnit(NumericValue):
         else:
             return _str
 
-    def __call__(self, exception=True):
+    def __call__(self, exception=NOTSET):
         """Unit is treated as a constant value, and this method always returns 1.0
 
         Returns
@@ -402,6 +392,7 @@ class _PyomoUnit(NumericValue):
         : float
            Returns 1.0
         """
+        _type_check_exception_arg(self, exception)
         return 1.0
 
     @property
@@ -902,7 +893,7 @@ class PintUnitExtractionVisitor(EXPR.StreamBasedExpressionVisitor):
 
     def beforeChild(self, node, child, child_idx):
         ctype = child.__class__
-        if ctype in native_types or ctype in pyomo_constant_types:
+        if ctype in native_types:
             return False, self._pint_dimensionless
 
         if child.is_expression_type():
@@ -917,7 +908,7 @@ class PintUnitExtractionVisitor(EXPR.StreamBasedExpressionVisitor):
             pint_unit = self._pyomo_units_container._get_pint_units(pyomo_unit)
             return False, pint_unit
 
-        return True, None
+        return False, self._pint_dimensionless
 
     def exitNode(self, node, data):
         """Visitor callback when moving up the expression tree.
@@ -952,7 +943,7 @@ class PintUnitExtractionVisitor(EXPR.StreamBasedExpressionVisitor):
         return result
 
 
-class PyomoUnitsContainer(object):
+class PyomoUnitsContainer:
     """Class that is used to create and contain units in Pyomo.
 
     This is the class that is used to create, contain, and interact
@@ -1514,6 +1505,19 @@ class _DeferredUnitsSingleton(PyomoUnitsContainer):
         # present, at which point this instance __class__ will fall back
         # to PyomoUnitsContainer (where this method is not declared, OR
         # pint is not available and an ImportError will be raised.
+        #
+        # We need special case handling for __class__: gurobipy
+        # interrogates things by looking at their __class__ during
+        # python shutdown.  Unfortunately, interrogating this
+        # singleton's __class__ evaluates `pint_available`, which - if
+        # DASK is installed - imports dask.  Importing dask creates
+        # threading objects.  Unfortunately, creating threading objects
+        # during interpreter shutdown generates a RuntimeError.  So, our
+        # solution is to special-case the resolution of __class__ here
+        # to avoid accidentally triggering the imports.
+        if attr == "__class__":
+            return _DeferredUnitsSingleton
+        #
         if pint_available:
             # If the first thing that is being called is
             # "units.set_pint_registry(...)", then we will call __init__

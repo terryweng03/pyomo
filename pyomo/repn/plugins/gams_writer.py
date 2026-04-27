@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 #
 # Problem Writer for GAMS Format Files
@@ -180,9 +178,20 @@ class ToGamsVisitor(_ToStringVisitor):
 
     def _linear_to_string(self, node):
         values = [
-            self._monomial_to_string(arg)
-            if arg.__class__ is EXPR.MonomialTermExpression
-            else ftoa(arg, True)
+            (
+                self._monomial_to_string(arg)
+                if arg.__class__ is EXPR.MonomialTermExpression
+                else (
+                    ftoa(arg, True)
+                    if arg.__class__ in native_numeric_types
+                    else (
+                        self.smap.getSymbol(arg)
+                        if arg.is_variable_type()
+                        and (not arg.fixed or self.output_fixed_variables)
+                        else ftoa(value(arg), True)
+                    )
+                )
+            )
             for arg in node.args
         ]
         return node._to_string(values, False, self.smap)
@@ -194,7 +203,7 @@ def expression_to_string(expr, treechecker, smap=None, output_fixed_variables=Fa
     return expr_str, visitor.is_discontinuous
 
 
-class Categorizer(object):
+class Categorizer:
     """Class for representing categorized variables.
 
     Given a list of variable names and a symbol map, categorizes the variable
@@ -241,7 +250,7 @@ class Categorizer(object):
                 yield category, var_name
 
 
-class StorageTreeChecker(object):
+class StorageTreeChecker:
     def __init__(self, model):
         # blocks are hashable so we can use a normal set
         self.tree = {model}
@@ -608,11 +617,12 @@ class ProblemWriter_gams(AbstractProblemWriter):
         # encountered will be added to the var_list due to the labeler
         # defined above.
         for con in model.component_data_objects(Constraint, active=True, sort=sort):
-            if not con.has_lb() and not con.has_ub():
+            lb, body, ub = con.to_bounded_expression(True)
+            if lb is None and ub is None:
                 assert not con.equality
                 continue  # non-binding, so skip
 
-            con_body = as_numeric(con.body)
+            con_body = as_numeric(body)
             if skip_trivial_constraints and con_body.is_fixed():
                 continue
             if linear:
@@ -631,20 +641,20 @@ class ProblemWriter_gams(AbstractProblemWriter):
                 constraint_names.append('%s' % cName)
                 ConstraintIO.write(
                     '%s.. %s =e= %s ;\n'
-                    % (constraint_names[-1], con_body_str, ftoa(con.upper, False))
+                    % (constraint_names[-1], con_body_str, ftoa(ub, False))
                 )
             else:
-                if con.has_lb():
+                if lb is not None:
                     constraint_names.append('%s_lo' % cName)
                     ConstraintIO.write(
                         '%s.. %s =l= %s ;\n'
-                        % (constraint_names[-1], ftoa(con.lower, False), con_body_str)
+                        % (constraint_names[-1], ftoa(lb, False), con_body_str)
                     )
-                if con.has_ub():
+                if ub is not None:
                     constraint_names.append('%s_hi' % cName)
                     ConstraintIO.write(
                         '%s.. %s =l= %s ;\n'
-                        % (constraint_names[-1], con_body_str, ftoa(con.upper, False))
+                        % (constraint_names[-1], con_body_str, ftoa(ub, False))
                     )
 
         obj = list(model.component_data_objects(Objective, active=True, sort=sort))
@@ -946,6 +956,7 @@ valid_solvers = {
     'CONOPT3': {'LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'},
     'CONOPT4': {'LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'},
     'CONOPTD': {'LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'},
+    'COPT': {'LP', 'MIP', 'RMIP', 'QCP', 'MIQCP', 'RMIQCP'},
     'CONVERT': {
         'LP',
         'MIP',
@@ -1031,11 +1042,23 @@ valid_solvers = {
         'RMIQCP',
     },
     'GLOMIQO': {'QCP', 'MIQCP', 'RMIQCP'},
-    'GUROBI': {'LP', 'MIP', 'RMIP', 'QCP', 'MIQCP', 'RMIQCP'},
+    'GUROBI': {
+        'LP',
+        'MIP',
+        'RMIP',
+        'NLP',
+        'DNLP',
+        'MINLP',
+        'RMINLP',
+        'QCP',
+        'MIQCP',
+        'RMIQCP',
+    },
     'GUSS': {'LP', 'MIP', 'NLP', 'MCP', 'CNS', 'DNLP', 'MINLP', 'QCP', 'MIQCP'},
     'IPOPT': {'LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'},
     'IPOPTH': {'LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'},
     'JAMS': {'EMP'},
+    'HIGHS': {'LP', 'MIP', 'RMIP'},
     'KESTREL': {
         'LP',
         'MIP',
@@ -1130,6 +1153,7 @@ valid_solvers = {
     'MPSGE': {},
     'MSNLP': {'NLP', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'},
     'NLPEC': {'MCP', 'MPEC', 'RMPEC'},
+    'ODHCPLEX': {'MINLP'},
     'OQNLP': {'NLP', 'DNLP', 'MINLP', 'QCP', 'MIQCP'},
     'OS': {
         'LP',

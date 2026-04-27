@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """
 Cutting plane-based GDP reformulation.
@@ -15,7 +13,6 @@ Cutting plane-based GDP reformulation.
 Implements a general cutting plane-based reformulation for linear and
 convex GDPs.
 """
-from __future__ import division
 
 from pyomo.common.config import (
     ConfigBlock,
@@ -400,7 +397,8 @@ def back_off_constraint_with_calculated_cut_violation(
     val = value(transBlock_rHull.infeasibility_objective) - TOL
     if val <= 0:
         logger.info("\tBacking off cut by %s" % val)
-        cut._body += abs(val)
+        lb, body, ub = cut.to_bounded_expression()
+        cut.set_value((lb, body + abs(val), ub))
     # else there is nothing to do: restore the objective
     transBlock_rHull.del_component(transBlock_rHull.infeasibility_objective)
     transBlock_rHull.separation_objective.activate()
@@ -424,7 +422,8 @@ def back_off_constraint_by_fixed_tolerance(
                    this callback
     TOL: An absolute tolerance to be added to make cut more conservative.
     """
-    cut._body += TOL
+    lb, body, ub = cut.to_bounded_expression()
+    cut.set_value((lb, body + TOL, ub))
 
 
 @TransformationFactory.register(
@@ -808,13 +807,9 @@ class CuttingPlane_Transformation(Transformation):
             else:
                 self.verbose = False
 
-            (
-                instance_rBigM,
-                cuts_obj,
-                instance_rHull,
-                var_info,
-                transBlockName,
-            ) = self._setup_subproblems(instance, bigM, self._config.tighten_relaxation)
+            instance_rBigM, cuts_obj, instance_rHull, var_info, transBlockName = (
+                self._setup_subproblems(instance, bigM, self._config.tighten_relaxation)
+            )
 
             self._generate_cuttingplanes(
                 instance_rBigM, cuts_obj, instance_rHull, var_info, transBlockName

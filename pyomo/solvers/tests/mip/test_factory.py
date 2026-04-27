@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
 # Unit Tests for util/misc
 #
@@ -53,8 +51,8 @@ class OptFactoryDebug(unittest.TestCase):
 
     def tearDown(self):
         ReaderFactory.unregister('rtest3')
-        ReaderFactory.unregister('stest3')
-        ReaderFactory.unregister('wtest3')
+        SolverFactory.unregister('stest3')
+        WriterFactory.unregister('wtest3')
 
     def test_solver_factory(self):
         """
@@ -118,6 +116,9 @@ class OptFactoryDebug(unittest.TestCase):
         """
         ans = WriterFactory("none")
         self.assertEqual(ans, None)
+        ans = WriterFactory("wtest3")
+        self.assertEqual(ans, None)
+        WriterFactory.register('wtest3')(MockWriter)
         ans = WriterFactory("wtest3")
         self.assertNotEqual(ans, None)
 

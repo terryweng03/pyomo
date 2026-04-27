@@ -1,20 +1,20 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import pyomo.common.unittest as unittest
 import pyomo.contrib.parmest.parmest as parmest
 from pyomo.contrib.parmest.graphics import matplotlib_available, seaborn_available
+from pyomo.contrib.pynumero.asl import AmplInterface
 from pyomo.opt import SolverFactory
 
 ipopt_available = SolverFactory("ipopt").available()
+pynumero_ASL_available = AmplInterface.available()
 
 
 @unittest.skipIf(
@@ -31,18 +31,7 @@ class TestRooneyBieglerExamples(unittest.TestCase):
     def tearDownClass(self):
         pass
 
-    def test_model(self):
-        from pyomo.contrib.parmest.examples.rooney_biegler import rooney_biegler
-
-        rooney_biegler.main()
-
-    def test_model_with_constraint(self):
-        from pyomo.contrib.parmest.examples.rooney_biegler import (
-            rooney_biegler_with_constraint,
-        )
-
-        rooney_biegler_with_constraint.main()
-
+    @unittest.skipUnless(pynumero_ASL_available, "test requires libpynumero_ASL")
     @unittest.skipUnless(seaborn_available, "test requires seaborn")
     def test_parameter_estimation_example(self):
         from pyomo.contrib.parmest.examples.rooney_biegler import (
@@ -66,11 +55,11 @@ class TestRooneyBieglerExamples(unittest.TestCase):
         likelihood_ratio_example.main()
 
 
-@unittest.skipIf(
-    not parmest.parmest_available,
-    "Cannot test parmest: required dependencies are missing",
+@unittest.skipUnless(pynumero_ASL_available, "test requires libpynumero_ASL")
+@unittest.skipUnless(ipopt_available, "The 'ipopt' solver is not available")
+@unittest.skipUnless(
+    parmest.parmest_available, "Cannot test parmest: required dependencies are missing"
 )
-@unittest.skipIf(not ipopt_available, "The 'ipopt' solver is not available")
 class TestReactionKineticsExamples(unittest.TestCase):
     @classmethod
     def setUpClass(self):
@@ -140,6 +129,7 @@ class TestReactorDesignExamples(unittest.TestCase):
 
         reactor_design.main()
 
+    @unittest.skipUnless(pynumero_ASL_available, "test requires libpynumero_ASL")
     def test_parameter_estimation_example(self):
         from pyomo.contrib.parmest.examples.reactor_design import (
             parameter_estimation_example,
@@ -181,11 +171,23 @@ class TestReactorDesignExamples(unittest.TestCase):
 
         multisensor_data_example.main()
 
-    @unittest.skipUnless(matplotlib_available, "test requires matplotlib")
+    @unittest.skipUnless(
+        matplotlib_available and seaborn_available,
+        "test requires matplotlib and seaborn",
+    )
     def test_datarec_example(self):
         from pyomo.contrib.parmest.examples.reactor_design import datarec_example
 
         datarec_example.main()
+
+    def test_update_suffix_example(self):
+        from pyomo.contrib.parmest.examples.reactor_design import update_suffix_example
+
+        suffix_obj, new_vals, new_var_vals = update_suffix_example.main()
+
+        # Check that the suffix object has been updated correctly
+        for i, v in enumerate(new_var_vals):
+            self.assertAlmostEqual(new_var_vals[i], new_vals[i], places=6)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,12 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
@@ -24,16 +33,25 @@ import sys
 sys.path.insert(0, os.path.abspath('../../../pyutilib'))
 # top-level pyomo source directory
 sys.path.insert(0, os.path.abspath('../..'))
+# our sphinx extensions
+sys.path.insert(0, os.path.abspath('ext'))
+
+# -- Mark that we are running Sphinx --------------------------------------
+import pyomo
+
+# Mark a "convenient" and reasonably unique global flag that we can use
+# elsewhere to reliably tell if Sphinx is building / testing the docs
+pyomo.__sphinx_build__ = True
 
 # -- Rebuild SPY files ----------------------------------------------------
-sys.path.insert(0, os.path.abspath('tests'))
+sys.path.insert(0, os.path.abspath('src'))
 try:
     print("Regenerating SPY files...")
     from strip_examples import generate_spy_files
 
-    generate_spy_files(os.path.abspath('tests'))
+    generate_spy_files(os.path.abspath('src'))
     generate_spy_files(
-        os.path.abspath(os.path.join('library_reference', 'kernel', 'examples'))
+        os.path.abspath(os.path.join('explanation', 'experimental', 'kernel'))
     )
 finally:
     sys.path.pop(0)
@@ -46,8 +64,7 @@ intersphinx_mapping = {
     'numpy': ('https://numpy.org/doc/stable/', None),
     'pandas': ('https://pandas.pydata.org/docs/', None),
     'scikit-learn': ('https://scikit-learn.org/stable/', None),
-    'scipy': ('https://docs.scipy.org/doc/scipy/reference/', None),
-    'Sphinx': ('https://www.sphinx-doc.org/en/stable/', None),
+    'scipy': ('https://docs.scipy.org/doc/scipy/', None),
 }
 
 # -- General configuration ------------------------------------------------
@@ -61,18 +78,18 @@ needs_sphinx = '1.8'
 # ones.
 extensions = [
     'sphinx.ext.intersphinx',
-    'sphinx.ext.autodoc',
     'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
-    'sphinx.ext.ifconfig',
     'sphinx.ext.inheritance_diagram',
-    'sphinx.ext.autosummary',
     'sphinx.ext.doctest',
     'sphinx.ext.todo',
     'sphinx_copybutton',
-    #'sphinx.ext.githubpages',
+    # Our version of 'autoenum', designed to work with autosummary.
+    # This adds 'sphinx.ext.autosummary', and 'sphinx.ext.autodoc':
+    'pyomo_autosummary_autoenum',
+    'pyomo_tocref',
 ]
 
 viewcode_follow_imported_members = True
@@ -95,8 +112,8 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Pyomo'
-copyright = u'2008-2023, Sandia National Laboratories'
-author = u'Pyomo Developers'
+copyright = u'2008-2026, Sandia National Laboratories'
+author = u'Pyomo Development Team'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -118,8 +135,22 @@ language = "en"
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-# This patterns also effect to html_static_path and html_extra_path
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+# These patterns also effect to html_static_path and html_extra_path
+# Notes:
+#  - _build : this is the Sphinx build (output) dir
+#
+#  - api/*.tests.* : this matches autosummary RST files generated for
+#    test modules.  Note that the _templates/recursive-modules.rst
+#    should prevent these file from being generated, so this is not
+#    strictly necessary, but including it makes Sphinx throw warnings if
+#    the filter in the template ever "breaks"
+#
+#  - **/tests/** : this matches source files in any tests directory
+#    [JDS: I *believe* this is necessary, but am not 100% certain]
+#
+#  - 'Thumbs.db', '.DS_Store' : these have been included from the
+#    beginning.  Unclear if they are still necessary
+exclude_patterns = ['_build', 'api/*.tests.*', '**/tests/**', 'Thumbs.db', '.DS_Store']
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'
@@ -135,6 +166,94 @@ trim_doctest_flags = True
 # If true, figures, tables and code-blocks are automatically numbered if
 # they have a caption.
 numfig = True
+
+
+# We want to be able to document the CONFIG class attribute in a special
+# section.  Nominally, we would use the napoleon_custom_sections hook.
+# Unfortunately, there isn't a generic "kwargs_style", and aliasing
+# 'Keyword Arguments' would render the section header in the
+# documentation as 'Keyword Arguments'.
+#
+# Our solution is to declare a new PyObject field type (:config:) and
+# define a new parser that generates :config: fields.  We register the
+# new parser with Napoleon by monkey-patching _load_custom_sections().
+def _monkey_patch_napoleon():
+    from sphinx.ext.napoleon.docstring import GoogleDocstring
+    from sphinx.domains.python._object import PyObject, PyTypedField
+    from sphinx.locale import _
+    from sphinx import addnodes
+    from functools import partial
+
+    class PyConfigDomainField(PyTypedField):
+        def make_xref(
+            self,
+            rolename: str,
+            domain: str,
+            target: str,
+            innernode=addnodes.literal_emphasis,
+            contnode=None,
+            env=None,
+            inliner=None,
+            location=None,
+        ):
+            ans = super().make_xref(
+                rolename=rolename,
+                domain=domain,
+                target=target,
+                innernode=innernode,
+                contnode=contnode,
+                env=env,
+                inliner=inliner,
+                location=location,
+            )
+            # Part of the call stack will override the reftype to
+            # "class".  We want to support a broader set of domain
+            # types, so we will set it to "anything" (i.e., object)
+            ans['reftype'] = 'obj'
+            return ans
+
+    PyObject.doc_field_types.append(
+        PyConfigDomainField(
+            'config',
+            label=_('CONFIG'),
+            names=('config',),
+            typerolename='obj',
+            typenames=('configtype',),
+            can_collapse=True,
+        )
+    )
+    PyObject.doc_field_types.append(
+        PyConfigDomainField(
+            'option',
+            label=_('Options'),
+            names=('option',),
+            typerolename='obj',
+            typenames=('optiontype',),
+            can_collapse=True,
+        )
+    )
+
+    def _parse_config_section(self, field: str, section: str) -> list[str]:
+        fields = self._consume_fields()
+        if self._config.napoleon_use_keyword:
+            return self._format_docutils_params(
+                fields, field_role=field, type_role=field + 'type'
+            )
+        else:
+            return self._format_fields(_(section), fields)
+
+    original_loader = GoogleDocstring._load_custom_sections
+
+    def _load_custom_sections(self):
+        self._sections['config'] = partial(self._parse_config_section, 'config')
+        self._sections['options'] = partial(self._parse_config_section, 'option')
+        return original_loader(self)
+
+    GoogleDocstring._parse_config_section = _parse_config_section
+    GoogleDocstring._load_custom_sections = _load_custom_sections
+
+
+_monkey_patch_napoleon()
 
 # -- Options for HTML output ----------------------------------------------
 
@@ -155,7 +274,7 @@ if not on_rtd:  # only import and set the theme if we're building docs locally
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
+html_theme_options = {'navigation_depth': 6, 'titles_only': True}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -183,23 +302,48 @@ latex_elements = {
     # 'pointsize': '10pt',
     # Additional stuff for the LaTeX preamble.
     #
-    # 'preamble': '',
+    'preamble': r'''
+\usepackage{enumitem}
+\setlistdepth{99}
+\DeclareUnicodeCharacter{2227}{$\wedge$}
+\DeclareUnicodeCharacter{2228}{$\vee$}
+\DeclareUnicodeCharacter{22BB}{$\veebar$}
+''',
     # Latex figure (float) alignment
     #
     # 'figure_align': 'htbp',
+    # necessary for unicode charactacters in pdf output
+    'inputenc': '',
+    'utf8extra': '',
+    # remove blank pages (e.g., between chapters)
+    'classoptions': ',openany,oneside',
 }
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
-latex_documents = [(master_doc, 'pyomo.tex', 'Pyomo Documentation', 'Pyomo', 'manual')]
+latex_documents = [(master_doc, 'pyomo.tex', 'Pyomo Documentation', author, 'manual')]
+if not on_rtd:
+    latex_documents.append(
+        ('code', 'pyomo_reference.tex', 'Pyomo Code Reference', author, 'manual')
+    )
 
+# The name of an image file (relative to this directory) to place at the top of
+# the title page.
+latex_logo = '../logos/pyomo/PyomoNewBlue.jpg'
+
+# Disable the domain indices (i.e., the module index) for LaTeX targets:
+# because we are splitting the documentation, the module index in the
+# main document would be completely broken, and having one in the
+# reference document seems redundant (JDS: and I haven't figured out how
+# to have it in only one of the documents)
+latex_domain_indices = False
 
 # -- Options for manual page output ---------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [(master_doc, 'pyomo', 'Pyomo Documentation', [author], 1)]
+man_pages = []
 
 
 # -- Options for Texinfo output -------------------------------------------
@@ -207,20 +351,17 @@ man_pages = [(master_doc, 'pyomo', 'Pyomo Documentation', [author], 1)]
 # Grouping the document tree into Texinfo files. List of tuples
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
-texinfo_documents = [
-    (
-        master_doc,
-        'pyomo',
-        'Pyomo Documentation',
-        author,
-        'Pyomo',
-        'One line description of project.',
-        'Miscellaneous',
-    )
-]
+texinfo_documents = []
 
 # autodoc_member_order = 'bysource'
-# autodoc_member_order = 'groupwise'
+autodoc_member_order = 'groupwise'
+# Starting in Sphinx 9.1, the new implementation of autodoc isn't
+# compatible with our autosummary extension (See
+# https://github.com/sphinx-doc/sphinx/issues/14089)
+autodoc_use_legacy_class_based = True
+
+autosummary_generate = True
+autosummary_ignore_module_all = True
 
 # -- Check which conditional dependencies are available ------------------
 # Used for skipping certain doctests
@@ -254,20 +395,32 @@ system_info = (
     platform.python_implementation()
 )
 
+# Mark that we are testing code (in this case, testing the documentation)
+from pyomo.common.flags import in_testing_environment
+in_testing_environment(True)
+
+# We need multiprocessing because some doctests must be skipped if the
+# start method is not "fork"
+import multiprocessing
+
+# (register plugins, make environ available to tests)
+import pyomo.environ as pyo
+
 from pyomo.common.dependencies import (
     attempt_import, numpy_available, scipy_available, pandas_available,
     yaml_available, networkx_available, matplotlib_available,
-    pympler_available, dill_available,
+    pympler_available, dill_available, pint_available,
+    numpy as np,
 )
-pint_available = attempt_import('pint', defer_check=False)[1]
 from pyomo.contrib.parmest.parmest import parmest_available
 
-import pyomo.environ as _pe # (trigger all plugin registrations)
-import pyomo.opt as _opt
+# Ensure that the matplotlib import has been resolved (and the backend changed)
+bool(matplotlib_available)
 
 # Not using SolverFactory to check solver availability because
 # as of June 2020 there is no way to suppress warnings when 
 # solvers are not available
+import pyomo.opt as _opt
 ipopt_available = bool(_opt.check_available_solvers('ipopt'))
 sipopt_available = bool(_opt.check_available_solvers('ipopt_sens'))
 k_aug_available = bool(_opt.check_available_solvers('k_aug'))
@@ -277,6 +430,11 @@ glpk_available = bool(_opt.check_available_solvers('glpk'))
 gurobipy_available = bool(_opt.check_available_solvers('gurobi_direct'))
 
 baron = _opt.SolverFactory('baron')
+
+if numpy_available:
+    # Recent changes on GHA seem to have dropped the default precision
+    # from 8 to 4; restore the default.
+    np.set_printoptions(precision=8)
 
 if numpy_available and scipy_available:
     import pyomo.contrib.pynumero.asl as _asl
@@ -288,4 +446,8 @@ else:
     asl_available = False
     ma27_available = False
     mumps_available = False
+
+# Prevent any Pyomo logs from propagating up to the doctest logger
+import logging
+logging.getLogger('pyomo').propagate = False
 '''

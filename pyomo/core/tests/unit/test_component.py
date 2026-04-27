@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
 # Unit Tests for components
 #
@@ -66,19 +64,17 @@ class TestComponent(unittest.TestCase):
         )
 
         m.b[2]._component = None
-        self.assertEqual(
-            m.b[2].getname(fully_qualified=True), "[Unattached _BlockData]"
-        )
+        self.assertEqual(m.b[2].getname(fully_qualified=True), "[Unattached BlockData]")
         # I think that getname() should do this:
         # self.assertEqual(m.b[2].c[2,4].getname(fully_qualified=True),
-        #                 "[Unattached _BlockData].c[2,4]")
+        #                 "[Unattached BlockData].c[2,4]")
         # but it doesn't match current behavior.  I will file a PEP to
         # propose changing the behavior later and proceed to test
         # current behavior.
         self.assertEqual(m.b[2].c[2, 4].getname(fully_qualified=True), "c[2,4]")
 
         self.assertEqual(
-            m.b[2].getname(fully_qualified=False), "[Unattached _BlockData]"
+            m.b[2].getname(fully_qualified=False), "[Unattached BlockData]"
         )
         self.assertEqual(m.b[2].c[2, 4].getname(fully_qualified=False), "c[2,4]")
 
@@ -107,7 +103,7 @@ class TestComponent(unittest.TestCase):
     def test_is_reference(self):
         m = ConcreteModel()
 
-        class _NotSpecified(object):
+        class _NotSpecified:
             pass
 
         m.comp = Component(ctype=_NotSpecified)

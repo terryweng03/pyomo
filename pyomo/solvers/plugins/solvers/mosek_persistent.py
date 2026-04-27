@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import operator
 import itertools
@@ -85,7 +83,7 @@ class MOSEKPersistent(PersistentSolver, MOSEKDirect):
 
         Parameters
         ----------
-        con_seq: tuple/list of Constraint (scalar Constraint or single _ConstraintData)
+        con_seq: tuple/list of Constraint (scalar Constraint or single ConstraintData)
         """
         self._add_constraints(con_seq)
 
@@ -95,7 +93,7 @@ class MOSEKPersistent(PersistentSolver, MOSEKDirect):
         This will keep any other model components intact.
         Parameters
         ----------
-        solver_var: Var (scalar Var or single _VarData)
+        solver_var: Var (scalar Var or single VarData)
         """
         self.remove_vars(solver_var)
 
@@ -106,7 +104,7 @@ class MOSEKPersistent(PersistentSolver, MOSEKDirect):
         This will keep any other model components intact.
         Parameters
         ----------
-        *solver_var: Var (scalar Var or single _VarData)
+        *solver_var: Var (scalar Var or single VarData)
         """
         try:
             var_ids = []
@@ -137,7 +135,7 @@ class MOSEKPersistent(PersistentSolver, MOSEKDirect):
         To remove a conic-domain, you should use the remove_block method.
         Parameters
         ----------
-        solver_con: Constraint (scalar Constraint or single _ConstraintData)
+        solver_con: Constraint (scalar Constraint or single ConstraintData)
         """
         self.remove_constraints(solver_con)
 
@@ -151,7 +149,7 @@ class MOSEKPersistent(PersistentSolver, MOSEKDirect):
 
         Parameters
         ----------
-        *solver_cons: Constraint (scalar Constraint or single _ConstraintData)
+        *solver_cons: Constraint (scalar Constraint or single ConstraintData)
         """
         lq_cons = tuple(
             itertools.filterfalse(lambda x: isinstance(x, _ConicBase), solver_cons)
@@ -205,7 +203,7 @@ class MOSEKPersistent(PersistentSolver, MOSEKDirect):
         changing variable types and bounds.
         Parameters
         ----------
-        *solver_var: Constraint (scalar Constraint or single _ConstraintData)
+        *solver_var: Constraint (scalar Constraint or single ConstraintData)
         """
         try:
             var_ids = []
@@ -213,19 +211,19 @@ class MOSEKPersistent(PersistentSolver, MOSEKDirect):
                 var_ids.append(self._pyomo_var_to_solver_var_map[v])
             vtypes = tuple(map(self._mosek_vartype_from_var, solver_vars))
             lbs = tuple(
-                value(v)
-                if v.fixed
-                else -float('inf')
-                if value(v.lb) is None
-                else value(v.lb)
+                (
+                    value(v)
+                    if v.fixed
+                    else -float('inf') if value(v.lb) is None else value(v.lb)
+                )
                 for v in solver_vars
             )
             ubs = tuple(
-                value(v)
-                if v.fixed
-                else float('inf')
-                if value(v.ub) is None
-                else value(v.ub)
+                (
+                    value(v)
+                    if v.fixed
+                    else float('inf') if value(v.ub) is None else value(v.ub)
+                )
                 for v in solver_vars
             )
             fxs = tuple(v.is_fixed() for v in solver_vars)

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 import pyomo.common.unittest as unittest
 
 from pyomo.environ import (
@@ -29,7 +27,7 @@ from pyomo.dae.flatten import (
 )
 
 
-class _TestFlattenBase(object):
+class _TestFlattenBase:
     """A base class to hold the common _hashRef utility method.
     We don't just derive from Test... classes directly as this
     causes tests to run twice.
@@ -48,6 +46,12 @@ class TestAssumedBehavior(unittest.TestCase):
     These are some behaviors we rely on that weren't
     immediately obvious would be the case.
     """
+
+    def setUp(self):
+        self._orig_flatten = normalize_index.flatten
+
+    def tearDown(self):
+        normalize_index.flatten = self._orig_flatten
 
     def test_cross(self):
         m = ConcreteModel()
@@ -313,6 +317,12 @@ class TestCategorize(_TestFlattenBase, unittest.TestCase):
 
 
 class TestFlatten(_TestFlattenBase, unittest.TestCase):
+    def setUp(self):
+        self._orig_flatten = normalize_index.flatten
+
+    def tearDown(self):
+        normalize_index.flatten = self._orig_flatten
+
     def _model1_1d_sets(self):
         # One-dimensional sets, no skipping.
         m = ConcreteModel()

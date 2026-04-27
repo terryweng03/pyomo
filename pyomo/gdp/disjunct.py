@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import logging
 import sys
@@ -27,8 +25,10 @@ from pyomo.core import (
     ModelComponentFactory,
     Binary,
     Block,
+    Constraint,
     ConstraintList,
     Any,
+    LogicalConstraint,
     LogicalConstraintList,
     BooleanValue,
     ScalarBooleanVar,
@@ -41,7 +41,7 @@ from pyomo.core.base.component import (
     ComponentData,
 )
 from pyomo.core.base.global_set import UnindexedComponent_index
-from pyomo.core.base.block import _BlockData
+from pyomo.core.base.block import BlockData
 from pyomo.core.base.misc import apply_indexed_rule
 from pyomo.core.base.indexed_component import ActiveIndexedComponent
 from pyomo.core.expr.expr_common import ExpressionType
@@ -382,7 +382,7 @@ class AutoLinkedBooleanVar(ScalarBooleanVar):
 
 # The following should eventually be promoted so that all
 # IndexedComponents can use it
-class _Initializer(object):
+class _Initializer:
     """A simple function to process an argument to a Component constructor.
 
     This checks the incoming initializer type and maps it to a static
@@ -412,7 +412,7 @@ class _Initializer(object):
             return (_Initializer.deferred_value, arg)
 
 
-class _DisjunctData(_BlockData):
+class DisjunctData(BlockData):
     __autoslot_mappers__ = {'_transformation_block': AutoSlots.weakref_mapper}
 
     _Block_reserved_words = set()
@@ -424,7 +424,7 @@ class _DisjunctData(_BlockData):
         )
 
     def __init__(self, component):
-        _BlockData.__init__(self, component)
+        BlockData.__init__(self, component)
         with self._declare_reserved_components():
             self.indicator_var = AutoLinkedBooleanVar()
             self.binary_indicator_var = AutoLinkedBinaryVar(self.indicator_var)
@@ -434,23 +434,28 @@ class _DisjunctData(_BlockData):
         self._transformation_block = None
 
     def activate(self):
-        super(_DisjunctData, self).activate()
+        super(DisjunctData, self).activate()
         self.indicator_var.unfix()
 
     def deactivate(self):
-        super(_DisjunctData, self).deactivate()
+        super(DisjunctData, self).deactivate()
         self.indicator_var.fix(False)
 
     def _deactivate_without_fixing_indicator(self):
-        super(_DisjunctData, self).deactivate()
+        super(DisjunctData, self).deactivate()
 
     def _activate_without_unfixing_indicator(self):
-        super(_DisjunctData, self).activate()
+        super(DisjunctData, self).activate()
+
+
+class _DisjunctData(metaclass=RenamedClass):
+    __renamed__new_class__ = DisjunctData
+    __renamed__version__ = '6.7.2'
 
 
 @ModelComponentFactory.register("Disjunctive blocks.")
 class Disjunct(Block):
-    _ComponentDataClass = _DisjunctData
+    _ComponentDataClass = DisjunctData
 
     def __new__(cls, *args, **kwds):
         if cls != Disjunct:
@@ -475,7 +480,7 @@ class Disjunct(Block):
     # def _deactivate_without_fixing_indicator(self):
     #    # Ideally, this would be a super call from this class.  However,
     #    # doing that would trigger a call to deactivate() on all the
-    #    # _DisjunctData objects (exactly what we want to avoid!)
+    #    # DisjunctData objects (exactly what we want to avoid!)
     #    #
     #    # For the time being, we will do something bad and directly call
     #    # the base class method from where we would otherwise want to
@@ -484,7 +489,7 @@ class Disjunct(Block):
     def _activate_without_unfixing_indicator(self):
         # Ideally, this would be a super call from this class.  However,
         # doing that would trigger a call to deactivate() on all the
-        # _DisjunctData objects (exactly what we want to avoid!)
+        # DisjunctData objects (exactly what we want to avoid!)
         #
         # For the time being, we will do something bad and directly call
         # the base class method from where we would otherwise want to
@@ -495,15 +500,9 @@ class Disjunct(Block):
                 component_data._activate_without_unfixing_indicator()
 
 
-class ScalarDisjunct(_DisjunctData, Disjunct):
+class ScalarDisjunct(DisjunctData, Disjunct):
     def __init__(self, *args, **kwds):
-        ## FIXME: This is a HACK to get around a chicken-and-egg issue
-        ## where _BlockData creates the indicator_var *before*
-        ## Block.__init__ declares the _defer_construction flag.
-        self._defer_construction = True
-        self._suppress_ctypes = set()
-
-        _DisjunctData.__init__(self, self)
+        DisjunctData.__init__(self, self)
         Disjunct.__init__(self, *args, **kwds)
         self._data[None] = self
         self._index = UnindexedComponent_index
@@ -524,10 +523,10 @@ class IndexedDisjunct(Disjunct):
         return any(d.active for d in self._data.values())
 
 
-_DisjunctData._Block_reserved_words = set(dir(Disjunct()))
+DisjunctData._Block_reserved_words = set(dir(Disjunct()))
 
 
-class _DisjunctionData(ActiveComponentData):
+class DisjunctionData(ActiveComponentData):
     __slots__ = ('disjuncts', 'xor', '_algebraic_constraint', '_transformation_map')
     __autoslot_mappers__ = {'_algebraic_constraint': AutoSlots.weakref_mapper}
     _NoArgument = (0,)
@@ -542,7 +541,7 @@ class _DisjunctionData(ActiveComponentData):
         #
         # These lines represent in-lining of the
         # following constructors:
-        #   - _ConstraintData,
+        #   - ConstraintData,
         #   - ActiveComponentData
         #   - ComponentData
         self._component = weakref_ref(component) if (component is not None) else None
@@ -564,30 +563,44 @@ class _DisjunctionData(ActiveComponentData):
             # IndexedDisjunct indexed by Any which has already been transformed,
             # the new Disjuncts are Blocks already. This catches them for who
             # they are anyway.
-            if isinstance(e, _DisjunctData):
-                self.disjuncts.append(e)
-                continue
-            # The user was lazy and gave us a single constraint
-            # expression or an iterable of expressions
-            expressions = []
-            if hasattr(e, '__iter__'):
+            if hasattr(e, 'is_component_type') and e.is_component_type():
+                if e.ctype == Disjunct and not e.is_indexed():
+                    self.disjuncts.append(e)
+                    continue
+                e_iter = [e]
+            elif hasattr(e, '__iter__'):
                 e_iter = e
             else:
                 e_iter = [e]
-            for _tmpe in e_iter:
+            # The user was lazy and gave us a single constraint
+            # expression or an iterable of expressions
+            expressions = []
+            propositions = []
+            for _tmp_e in e_iter:
                 try:
-                    if _tmpe.is_expression_type():
-                        expressions.append(_tmpe)
+                    if _tmp_e.is_expression_type(ExpressionType.RELATIONAL):
+                        expressions.append(_tmp_e)
+                        continue
+                    if _tmp_e.is_expression_type(ExpressionType.LOGICAL):
+                        propositions.append(_tmp_e)
                         continue
                 except AttributeError:
                     pass
-                msg = "\n\tin %s" % (type(e),) if e_iter is e else ""
+                # Note: Constraint.(In)Feasible is now a full relational
+                # expression, so we don't need to check for it.
+                # LogicalConstraint.(In)Feasible is a BooleanConstant,
+                # so is not an expression and needs to be explicitly
+                # checked for.
+                if _tmp_e in (LogicalConstraint.Feasible, LogicalConstraint.Infeasible):
+                    propositions.append(_tmp_e)
+                    continue
+                msg = " in '%s'" % (type(e).__name__,) if e_iter is e else ""
                 raise ValueError(
-                    "Unexpected term for Disjunction %s.\n"
-                    "\tExpected a Disjunct object, relational expression, "
-                    "or iterable of\n"
-                    "\trelational expressions but got %s%s"
-                    % (self.name, type(_tmpe), msg)
+                    "Unexpected term for Disjunction '%s'.\n    "
+                    "Expected a Disjunct object, relational or logical "
+                    "expression, or\n    iterable of relational/logical "
+                    "expressions but got '%s'%s"
+                    % (self.name, type(_tmp_e).__name__, msg)
                 )
 
             comp = self.parent_component()
@@ -603,25 +616,19 @@ class _DisjunctionData(ActiveComponentData):
                 # happen automatically.
                 comp._autodisjuncts.construct()
             disjunct = comp._autodisjuncts[len(comp._autodisjuncts)]
-            disjunct.constraint = c = ConstraintList()
-            disjunct.propositions = p = LogicalConstraintList()
-            for e in expressions:
-                if e.is_expression_type(ExpressionType.RELATIONAL):
-                    c.add(e)
-                elif e.is_expression_type(ExpressionType.LOGICAL):
-                    p.add(e)
-                else:
-                    raise RuntimeError(
-                        "Unsupported expression type on Disjunct "
-                        f"{disjunct.name}: expected either relational or "
-                        f"logical expression, found {e.__class__.__name__}"
-                    )
+            disjunct.constraint = ConstraintList(rule=expressions)
+            disjunct.propositions = LogicalConstraintList(rule=propositions)
             self.disjuncts.append(disjunct)
+
+
+class _DisjunctionData(metaclass=RenamedClass):
+    __renamed__new_class__ = DisjunctionData
+    __renamed__version__ = '6.7.2'
 
 
 @ModelComponentFactory.register("Disjunction expressions.")
 class Disjunction(ActiveIndexedComponent):
-    _ComponentDataClass = _DisjunctionData
+    _ComponentDataClass = DisjunctionData
 
     def __new__(cls, *args, **kwds):
         if cls != Disjunction:
@@ -699,6 +706,10 @@ class Disjunction(ActiveIndexedComponent):
         timer = ConstructionTimer(self)
         self._constructed = True
 
+        if self._anonymous_sets is not None:
+            for _set in self._anonymous_sets:
+                _set.construct()
+
         _self_parent = self.parent_block()
         if not self.is_indexed():
             if self._init_rule is not None:
@@ -752,15 +763,15 @@ class Disjunction(ActiveIndexedComponent):
                 ("Index", self._index_set if self.is_indexed() else None),
                 ("Active", self.active),
             ],
-            self.items(),
+            self.items,
             ("Disjuncts", "Active", "XOR"),
             lambda k, v: [[x.name for x in v.disjuncts], v.active, v.xor],
         )
 
 
-class ScalarDisjunction(_DisjunctionData, Disjunction):
+class ScalarDisjunction(DisjunctionData, Disjunction):
     def __init__(self, *args, **kwds):
-        _DisjunctionData.__init__(self, component=self)
+        DisjunctionData.__init__(self, component=self)
         Disjunction.__init__(self, *args, **kwds)
         self._index = UnindexedComponent_index
 
@@ -771,7 +782,7 @@ class ScalarDisjunction(_DisjunctionData, Disjunction):
     # currently in place). So during initialization only, we will
     # treat them as "indexed" objects where things like
     # Constraint.Skip are managed. But after that they will behave
-    # like _DisjunctionData objects where set_value does not handle
+    # like DisjunctionData objects where set_value does not handle
     # Disjunction.Skip but expects a valid expression or None.
     #
 

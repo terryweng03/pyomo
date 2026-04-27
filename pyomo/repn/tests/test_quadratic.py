@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 from pyomo.common.log import LoggingIntercept
 import pyomo.common.unittest as unittest
@@ -19,19 +17,10 @@ from pyomo.core.expr.numeric_expr import (
     SumExpression,
 )
 from pyomo.repn.quadratic import QuadraticRepnVisitor
+from pyomo.repn.tests.test_linear import VisitorConfig
 from pyomo.repn.util import InvalidNumber
 
 from pyomo.environ import ConcreteModel, Var, Param, Any, log
-
-
-class VisitorConfig(object):
-    def __init__(self):
-        self.subexpr = {}
-        self.var_map = {}
-        self.var_order = {}
-
-    def __iter__(self):
-        return iter((self.subexpr, self.var_map, self.var_order))
 
 
 class TestQuadratic(unittest.TestCase):
@@ -43,7 +32,7 @@ class TestQuadratic(unittest.TestCase):
         e = 2
 
         cfg = VisitorConfig()
-        visitor = QuadraticRepnVisitor(*cfg)
+        visitor = QuadraticRepnVisitor(**cfg)
         visitor.expand_nonlinear_products = True
         repn = visitor.walk_expression(e)
 
@@ -59,7 +48,7 @@ class TestQuadratic(unittest.TestCase):
         e = 2 + 3 * m.x
 
         cfg = VisitorConfig()
-        visitor = QuadraticRepnVisitor(*cfg)
+        visitor = QuadraticRepnVisitor(**cfg)
         visitor.expand_nonlinear_products = True
         repn = visitor.walk_expression(e)
 
@@ -75,7 +64,7 @@ class TestQuadratic(unittest.TestCase):
         e = 2 + 3 * m.x + 4 * m.x**2
 
         cfg = VisitorConfig()
-        visitor = QuadraticRepnVisitor(*cfg)
+        visitor = QuadraticRepnVisitor(**cfg)
         visitor.expand_nonlinear_products = True
         repn = visitor.walk_expression(e)
 
@@ -91,12 +80,12 @@ class TestQuadratic(unittest.TestCase):
         e = (2 + 3 * m.x + 4 * m.x**2) * (5 + 6 * m.x + 7 * m.x**2)
 
         cfg = VisitorConfig()
-        visitor = QuadraticRepnVisitor(*cfg)
+        visitor = QuadraticRepnVisitor(**cfg)
         visitor.expand_nonlinear_products = True
         repn = visitor.walk_expression(e)
 
-        QE4 = SumExpression([4 * m.x**2])
-        QE7 = SumExpression([7 * m.x**2])
+        QE4 = 4 * m.x**2
+        QE7 = 7 * m.x**2
         LE3 = MonomialTermExpression((3, m.x))
         LE6 = MonomialTermExpression((6, m.x))
         NL = +QE4 * (QE7 + LE6) + (LE3) * (QE7)
@@ -113,7 +102,7 @@ class TestQuadratic(unittest.TestCase):
         e = (2 + 3 * m.x + 4 * m.x**2) * (5 + 6 * m.x + 7 * m.x**2)
 
         cfg = VisitorConfig()
-        visitor = QuadraticRepnVisitor(*cfg)
+        visitor = QuadraticRepnVisitor(**cfg)
         visitor.expand_nonlinear_products = False
         repn = visitor.walk_expression(e)
 
@@ -131,7 +120,7 @@ class TestQuadratic(unittest.TestCase):
         e = (1 + 2 * m.x + 3 * m.y) * (4 + 5 * m.x + 6 * m.y)
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
 
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {id(m.x): m.x, id(m.y): m.y})
@@ -140,7 +129,7 @@ class TestQuadratic(unittest.TestCase):
         self.assertEqual(repn.constant, 4)
         self.assertEqual(repn.linear, {id(m.x): 13, id(m.y): 18})
         self.assertEqual(
-            repn.quadratic,
+            cfg.order_quadratic(repn.quadratic),
             {(id(m.x), id(m.x)): 10, (id(m.y), id(m.y)): 18, (id(m.x), id(m.y)): 27},
         )
         assertExpressionsEqual(self, repn.nonlinear, None)
@@ -148,7 +137,7 @@ class TestQuadratic(unittest.TestCase):
         e = (m.x + m.y + log(m.x)) * m.x
 
         cfg = VisitorConfig()
-        visitor = QuadraticRepnVisitor(*cfg)
+        visitor = QuadraticRepnVisitor(**cfg)
         visitor.expand_nonlinear_products = False
         repn = visitor.walk_expression(e)
 
@@ -174,17 +163,20 @@ class TestQuadratic(unittest.TestCase):
         self.assertEqual(repn.multiplier, 1)
         self.assertEqual(repn.constant, 0)
         self.assertEqual(repn.linear, {})
-        self.assertEqual(repn.quadratic, {(id(m.x), id(m.x)): 1, (id(m.x), id(m.y)): 1})
+        self.assertEqual(
+            cfg.order_quadratic(repn.quadratic),
+            {(id(m.x), id(m.x)): 1, (id(m.x), id(m.y)): 1},
+        )
         assertExpressionsEqual(self, repn.nonlinear, NL)
 
         e = m.x * (m.x + m.y + log(m.x) + 2)
 
         cfg = VisitorConfig()
-        visitor = QuadraticRepnVisitor(*cfg)
+        visitor = QuadraticRepnVisitor(**cfg)
         visitor.expand_nonlinear_products = False
         repn = visitor.walk_expression(e)
 
-        NL = m.x * (log(m.x) + (m.x + m.y) + 2)
+        NL = m.x * (log(m.x) + (m.x + m.y + 2))
 
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {id(m.x): m.x, id(m.y): m.y})
@@ -206,7 +198,10 @@ class TestQuadratic(unittest.TestCase):
         self.assertEqual(repn.multiplier, 1)
         self.assertEqual(repn.constant, 0)
         self.assertEqual(repn.linear, {id(m.x): 2})
-        self.assertEqual(repn.quadratic, {(id(m.x), id(m.x)): 1, (id(m.x), id(m.y)): 1})
+        self.assertEqual(
+            cfg.order_quadratic(repn.quadratic),
+            {(id(m.x), id(m.x)): 1, (id(m.x), id(m.y)): 1},
+        )
         assertExpressionsEqual(self, repn.nonlinear, NL)
 
     def test_sum(self):
@@ -217,7 +212,7 @@ class TestQuadratic(unittest.TestCase):
         e = SumExpression([])
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {})
         self.assertEqual(cfg.var_order, {})
@@ -230,7 +225,7 @@ class TestQuadratic(unittest.TestCase):
         e += 5
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {})
         self.assertEqual(cfg.var_order, {})
@@ -243,7 +238,7 @@ class TestQuadratic(unittest.TestCase):
         e += m.x
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {id(m.x): m.x})
         self.assertEqual(cfg.var_order, {id(m.x): 0})
@@ -256,7 +251,7 @@ class TestQuadratic(unittest.TestCase):
         e += m.y**2
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {id(m.x): m.x, id(m.y): m.y})
         self.assertEqual(cfg.var_order, {id(m.x): 0, id(m.y): 1})
@@ -269,7 +264,7 @@ class TestQuadratic(unittest.TestCase):
         e += m.y**3
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {id(m.x): m.x, id(m.y): m.y})
         self.assertEqual(cfg.var_order, {id(m.x): 0, id(m.y): 1})
@@ -282,7 +277,7 @@ class TestQuadratic(unittest.TestCase):
         e += 2 * m.x**4
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {id(m.x): m.x, id(m.y): m.y})
         self.assertEqual(cfg.var_order, {id(m.x): 0, id(m.y): 1})
@@ -295,7 +290,7 @@ class TestQuadratic(unittest.TestCase):
         e += 2 * m.y
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {id(m.x): m.x, id(m.y): m.y})
         self.assertEqual(cfg.var_order, {id(m.x): 0, id(m.y): 1})
@@ -308,14 +303,17 @@ class TestQuadratic(unittest.TestCase):
         e += 3 * m.x * m.y
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {id(m.x): m.x, id(m.y): m.y})
         self.assertEqual(cfg.var_order, {id(m.x): 0, id(m.y): 1})
         self.assertEqual(repn.multiplier, 1)
         self.assertEqual(repn.constant, 5)
         self.assertEqual(repn.linear, {id(m.x): 1, id(m.y): 2})
-        self.assertEqual(repn.quadratic, {(id(m.y), id(m.y)): 1, (id(m.x), id(m.y)): 3})
+        self.assertEqual(
+            cfg.order_quadratic(repn.quadratic),
+            {(id(m.y), id(m.y)): 1, (id(m.x), id(m.y)): 3},
+        )
         assertExpressionsEqual(self, repn.nonlinear, m.y**3 + 2 * m.x**4)
 
     def test_pow(self):
@@ -325,7 +323,7 @@ class TestQuadratic(unittest.TestCase):
 
         # Check **{int}
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression((1 + 3 * m.x + 4 * m.y) ** 2)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression((1 + 3 * m.x + 4 * m.y) ** 2)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(cfg.var_map, {id(m.x): m.x, id(m.y): m.y})
         self.assertEqual(cfg.var_order, {id(m.x): 0, id(m.y): 1})
@@ -333,14 +331,14 @@ class TestQuadratic(unittest.TestCase):
         self.assertEqual(repn.constant, 1)
         self.assertEqual(repn.linear, {id(m.x): 6, id(m.y): 8})
         self.assertEqual(
-            repn.quadratic,
+            cfg.order_quadratic(repn.quadratic),
             {(id(m.x), id(m.x)): 9, (id(m.y), id(m.y)): 16, (id(m.x), id(m.y)): 24},
         )
         self.assertEqual(repn.nonlinear, None)
 
         # Check **{int}
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(
             (1 + 3 * m.x + 4 * m.y) ** 2.0
         )
         self.assertEqual(cfg.subexpr, {})
@@ -350,7 +348,7 @@ class TestQuadratic(unittest.TestCase):
         self.assertEqual(repn.constant, 1)
         self.assertEqual(repn.linear, {id(m.x): 6, id(m.y): 8})
         self.assertEqual(
-            repn.quadratic,
+            cfg.order_quadratic(repn.quadratic),
             {(id(m.x), id(m.x)): 9, (id(m.y), id(m.y)): 16, (id(m.x), id(m.y)): 24},
         )
         self.assertEqual(repn.nonlinear, None)
@@ -362,7 +360,7 @@ class TestQuadratic(unittest.TestCase):
         e = 0 * m.x[0] + 0 * m.x[1] * m.x[2] + 0 * log(m.x[3])
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(
             cfg.var_map,
@@ -380,13 +378,13 @@ class TestQuadratic(unittest.TestCase):
         self.assertEqual(repn.constant, 0)
         self.assertEqual(repn.linear, {})
         self.assertEqual(repn.quadratic, None)
-        self.assertEqual(repn.nonlinear, None)
+        assertExpressionsEqual(self, repn.nonlinear, 0 * log(m.x[3]))
 
         m.p = Param(mutable=True, within=Any, initialize=None)
         e = m.p * m.x[0] + m.p * m.x[1] * m.x[2] + m.p * log(m.x[3])
 
         cfg = VisitorConfig()
-        repn = QuadraticRepnVisitor(*cfg).walk_expression(e)
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(e)
         self.assertEqual(cfg.subexpr, {})
         self.assertEqual(
             cfg.var_map,
@@ -404,6 +402,82 @@ class TestQuadratic(unittest.TestCase):
         self.assertEqual(repn.constant, 0)
         self.assertEqual(repn.linear, {id(m.x[0]): InvalidNumber(None)})
         self.assertEqual(
-            repn.quadratic, {(id(m.x[1]), id(m.x[2])): InvalidNumber(None)}
+            cfg.order_quadratic(repn.quadratic),
+            {(id(m.x[1]), id(m.x[2])): InvalidNumber(None)},
+        )
+        self.assertEqual(repn.nonlinear, InvalidNumber(None))
+
+        e = (
+            m.p * m.x[0]
+            + m.p * m.x[1]
+            + m.p * m.x[1] * m.x[2]
+            + m.p * m.x[2] ** 2
+            + m.p * log(m.x[3])
+        )
+        f = 1 + m.x[0] + m.x[2] ** 2 + 0 * e
+
+        cfg = VisitorConfig()
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(f)
+        self.assertEqual(cfg.subexpr, {})
+        self.assertEqual(
+            cfg.var_map,
+            {
+                id(m.x[0]): m.x[0],
+                id(m.x[1]): m.x[1],
+                id(m.x[2]): m.x[2],
+                id(m.x[3]): m.x[3],
+            },
+        )
+        self.assertEqual(
+            cfg.var_order, {id(m.x[0]): 0, id(m.x[1]): 1, id(m.x[2]): 2, id(m.x[3]): 3}
+        )
+        self.assertEqual(repn.multiplier, 1)
+        self.assertEqual(repn.constant, 1)
+        self.assertEqual(len(repn.linear), 2)
+        self.assertEqual(
+            repn.linear,
+            {id(m.x[0]): InvalidNumber(None), id(m.x[1]): InvalidNumber(None)},
+        )
+        self.assertEqual(len(repn.quadratic), 2)
+        self.assertEqual(
+            cfg.order_quadratic(repn.quadratic),
+            {
+                (id(m.x[1]), id(m.x[2])): InvalidNumber(None),
+                (id(m.x[2]), id(m.x[2])): InvalidNumber(None),
+            },
+        )
+        self.assertEqual(repn.nonlinear, InvalidNumber(None))
+
+        f = 1 + m.p + 0 * e
+
+        cfg = VisitorConfig()
+        repn = QuadraticRepnVisitor(**cfg).walk_expression(f)
+        self.assertEqual(cfg.subexpr, {})
+        self.assertEqual(
+            cfg.var_map,
+            {
+                id(m.x[0]): m.x[0],
+                id(m.x[1]): m.x[1],
+                id(m.x[2]): m.x[2],
+                id(m.x[3]): m.x[3],
+            },
+        )
+        self.assertEqual(
+            cfg.var_order, {id(m.x[0]): 0, id(m.x[1]): 1, id(m.x[2]): 2, id(m.x[3]): 3}
+        )
+        self.assertEqual(repn.multiplier, 1)
+        self.assertEqual(repn.constant, InvalidNumber(None))
+        self.assertEqual(len(repn.linear), 2)
+        self.assertEqual(
+            repn.linear,
+            {id(m.x[0]): InvalidNumber(None), id(m.x[1]): InvalidNumber(None)},
+        )
+        self.assertEqual(len(repn.quadratic), 2)
+        self.assertEqual(
+            cfg.order_quadratic(repn.quadratic),
+            {
+                (id(m.x[1]), id(m.x[2])): InvalidNumber(None),
+                (id(m.x[2]), id(m.x[2])): InvalidNumber(None),
+            },
         )
         self.assertEqual(repn.nonlinear, InvalidNumber(None))

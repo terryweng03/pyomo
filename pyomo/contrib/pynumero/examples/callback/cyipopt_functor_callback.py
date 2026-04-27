@@ -1,6 +1,15 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 import pyomo.environ as pyo
 from pyomo.contrib.pynumero.examples.callback.reactor_design import model as m
-import pandas as pd
+from pyomo.common.dependencies import pandas as pd
 
 """
 This example uses an iteration callback with a functor to store
@@ -8,7 +17,7 @@ values from each iteration in a class
 """
 
 
-class ResidualsTableCallback(object):
+class ResidualsTableCallback:
     def __init__(self):
         self._residuals = None
 

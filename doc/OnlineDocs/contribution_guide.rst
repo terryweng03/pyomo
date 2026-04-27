@@ -37,13 +37,17 @@ run:
 
     # Auto-apply correct formatting
    pip install black
-   black -S -C <path> --exclude examples/pyomobook/python-ch/BadIndent.py
+   black <path>
    # Find typos in files
    conda install typos
    typos --config .github/workflows/typos.toml <path>
    
-If the spell-checker returns a failure for a word that is spelled correctly,
-please add the word to the ``.github/workflows/typos.toml`` file.
+If the spell-checker returns a failure for a word that is spelled
+correctly, please add the word to the ``.github/workflows/typos.toml``
+file. Note also that ``black`` reads from ``pyproject.toml`` to
+determine correct configuration, so if you are running ``black``
+indirectly (for example, using an IDE integration), please ensure you
+are not overriding the project-level configuration set in that file.
 
 Online Pyomo documentation is generated using `Sphinx <https://www.sphinx-doc.org/en/master/>`_
 with the ``napoleon`` extension enabled. For API documentation we use of one of these 
@@ -71,6 +75,43 @@ at least 70% coverage of the lines modified in the PR and prefer coverage
 closer to 90%. We also require that all tests pass before a PR will be 
 merged.
 
+Tests must import the Pyomo test harness from
+``pyomo.common.unittest`` instead of using Python's built-in
+``unittest`` module directly. This wrapper extends the standard testing
+framework with Pyomo-specific capabilities, including support for test
+timeouts and Pyomo-specific assertions for comparing expressions and
+nested containers with numerical tolerance. Using the provided interface
+ensures that all tests run consistently across Pyomo's multiple CI environments.
+A small example is shown below:
+
+.. code-block:: python
+
+   import pyomo.common.unittest as unittest
+
+   class TestSomething(unittest.TestCase):
+       def test_basic(self):
+           self.assertEqual(1 + 1, 2)
+
+Developers can also use any of the predefined ``pytest`` markers to categorize
+their tests appropriately.
+Markers are declared in ``pyproject.toml``. Some commonly used markers are:
+
+- ``expensive``: tests that take a long time to run
+- ``mpi``: tests that require MPI
+- ``solver(id='name')``: tests for a specific solver,
+  e.g., ``@pytest.mark.solver("name")``
+- ``solver(vendor='name')``: tests for a set of solvers (matching up to the
+  first underscore), e.g., ``solver(vendor="gurobi")`` will run tests marked
+  with ``solver("gurobi")``, ``solver("gurobi_direct")``, and
+  ``solver("gurobi_persistent")``
+
+More details about Pyomo-defined default test behavior can be found in
+the `conftest.py file <https://github.com/Pyomo/pyomo/blob/main/conftest.py>`_.
+
+.. note::
+   If you are having issues getting tests to pass on your Pull Request,
+   please tag any of the core developers to ask for help.
+
 The Pyomo main branch provides a Github Actions workflow (configured
 in the ``.github/`` directory) that will test any changes pushed to
 a branch with a subset of the complete test harness that includes
@@ -82,12 +123,15 @@ This will enable the tests to run automatically with each push to your fork.
 
 At any point in the development cycle, a "work in progress" pull request
 may be opened by including '[WIP]' at the beginning of the PR
-title. This allows your code changes to be tested by the full suite of
-Pyomo's automatic
-testing infrastructure. Any pull requests marked '[WIP]' will not be
+title. Any pull requests marked '[WIP]' or draft will not be
 reviewed or merged by the core development team. However, any
 '[WIP]' pull request left open for an extended period of time without
 active development may be marked 'stale' and closed.
+
+.. note::
+   Draft and WIP Pull Requests will **NOT** trigger tests. This is an effort to
+   reduce our CI backlog. Please make use of the provided
+   branch test suite for evaluating / testing draft functionality.
 
 Python Version Support
 ++++++++++++++++++++++
@@ -325,33 +369,51 @@ Finally, move to the directory containing the clone of your Pyomo fork and run:
 
 ::
 
-  python setup.py develop
+  pip install -e .[tests,docs,optional]
 
-These commands register the cloned code with the active python environment
-(``pyomodev``). This way, your changes to the source code for ``pyomo`` are
+This command registers the cloned code with the active Python environment
+(``pyomodev``) and installs all possible optional dependencies.
+Using ``-e`` ensures that your changes to the source code for ``pyomo`` are
 automatically used by the active environment. You can create another conda
 environment to switch to alternate versions of pyomo (e.g., stable).
+
+.. note::
+
+   The ``optional`` and ``docs`` dependencies are not strictly required;
+   however, we recommend installing them to ensure that a large number of
+   tests can be run locally. Optional packages that are not available will
+   cause tests to skip.
 
 Review Process
 --------------
 
 After a PR is opened it will be reviewed by at least two members of the
 core development team. The core development team consists of anyone with
-write-access to the Pyomo repository. Pull requests opened by a core
+write-access to the Pyomo repository. PRs opened by a core
 developer only require one review. The reviewers will decide if they
 think a PR should be merged or if more changes are necessary.
 
 Reviewers look for:
-    
-    * Outside of ``pyomo.contrib``: Code rigor and standards, edge cases,
-      side effects, etc.
-    * Inside of ``pyomo.contrib``: No “glaringly obvious” problems with
-      the code
-    * Documentation and tests
 
-The core development team tries to review pull requests in a timely
-manner but we make no guarantees on review timeframes. In addition, PRs
-might not be reviewed in the order they are opened in. 
+* **Core and Addons:** Code rigor, standards compliance, test coverage above
+  a threshold, and avoidance of unintended side effects (e.g., regressions
+  or backwards incompatibilities)
+* **Devel:** Basic code correctness and clarity, with an understanding that
+  these areas are experimental and evolving
+* **All areas:** Code formatting (using ``black``), documentation, and tests
+
+.. note::
+
+   For more information about Pyomo's development principles and the
+   stability expectations for ``addons`` and ``devel``, see
+   :doc:`/principles`.
+
+The core development team tries to review PRs in a timely
+manner, but we make no guarantees on review timeframes.
+Smaller, focused PRs are preferred and are generally reviewed more quickly.
+Larger PRs require more review effort and may take significantly longer.
+In addition, PRs might not be reviewed in the order in which they are opened.
+
 
 Where to put contributed code 
 ----------------------------- 
@@ -361,104 +423,171 @@ git repository. Next, you should create a branch on your fork dedicated
 to the development of the new feature or bug fix you're interested
 in. Once you have this branch checked out, you can start coding. Bug
 fixes and minor enhancements to existing Pyomo functionality should be
-made in the appropriate files in the Pyomo code base. New examples,
-features, and packages built on Pyomo should be placed in
-``pyomo.contrib``. Follow the link below to find out if
-``pyomo.contrib`` is right for your code.
+made in the appropriate files in the Pyomo code base.
 
-``pyomo.contrib``
------------------
+We refer to the modules that form the foundation of the Pyomo environment
+as ``pyomo`` core. This includes the base expression systems, modeling
+components, model compilers, and solver interfaces. The core development
+team has committed to maintaining these capabilities, adhering to the
+strictest policies for testing and backwards compatibility.
 
-Pyomo uses the ``pyomo.contrib`` package to facilitate the inclusion
-of third-party contributions that enhance Pyomo's core functionality.
-The are two ways that ``pyomo.contrib`` can be used to integrate
-third-party packages:
+Larger features, new modeling components, or experimental functionality
+should be placed in one of Pyomo's extension namespaces, described below.
 
-* ``pyomo.contrib`` can provide wrappers for separate Python packages, thereby
-   allowing these packages to be imported as subpackages of pyomo.
+Namespaces for Contributed and Experimental Code
+++++++++++++++++++++++++++++++++++++++++++++++++
 
-* ``pyomo.contrib`` can include contributed packages that are developed and
-   maintained outside of the Pyomo developer team.  
+Pyomo organizes non-core functionality into a small
+number of clearly defined namespaces. Contributors should place new
+functionality according to its intended stability and maintenance
+expectations:
 
-Including contrib packages in the Pyomo source tree provides a
+* ``pyomo.addons`` – For mostly stable, supported extensions that build on
+  the Pyomo core. These packages are maintained by dedicated
+  contributors, follow Pyomo's coding and testing standards, and adhere
+  to the same backwards compatibility and deprecation policies as the
+  rest of the codebase.
+
+* ``pyomo.devel`` – For experimental or rapidly evolving
+  contributions. These modules serve as early experimentation for research ideas,
+  prototypes, or specialized modeling components. Functionality under
+  this namespace may change or be removed between releases without
+  deprecation warnings.
+
+* ``pyomo.unsupported`` - For contributions that no longer have an active
+  maintainer nor any future development plans. Functionality under this namespace
+  may not work and is **NOT** tested through the standard test harness.
+
+This tiered namespace structure provides contributors a clear pathway from
+**experimentation to supported integration**, while protecting users from
+unexpected changes in stable areas of the codebase.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 30 50
+
+   * - Namespace
+     - Intended Use
+     - Stability
+   * - ``pyomo.devel``
+     - Active research and experimental code
+     - Unstable; APIs may change without warning
+   * - ``pyomo.addons``
+     - Mostly stable, supported extensions maintained by contributors
+     - Mostly stable APIs; follow Pyomo's standards
+   * - ``pyomo.unsupported``
+     - Unsupported, unmaintained code
+     - No guarantee of functionality and no regular testing
+   * - ``pyomo``
+     - Core Pyomo modeling framework
+     - Fully supported and versioned
+
+Submitting a Contributed Package
+--------------------------------
+
+Including contributed packages in the Pyomo source tree provides a
 convenient mechanism for defining new functionality that can be
-optionally deployed by users.  We expect this mechanism to include
-Pyomo extensions and experimental modeling capabilities.  However,
-contrib packages are treated as optional packages, which are not
-maintained by the Pyomo developer team.  Thus, it is the responsibility
+optionally deployed by users. We expect this mechanism to include
+Pyomo extensions and experimental modeling capabilities. However,
+contributed packages are treated as optional packages, which are not necessarily
+maintained by the Pyomo developer team. Thus, it is the responsibility
 of the code contributor to keep these packages up-to-date.
 
-Contrib package contributions will be considered as pull-requests,
-which will be reviewed by the Pyomo developer team.  Specifically,
+Contributed packages will be considered as pull requests,
+which will be reviewed by the Pyomo developer team. Specifically,
 this review will consider the suitability of the proposed capability,
 whether tests are available to check the execution of the code, and
 whether documentation is available to describe the capability.
-Contrib packages will be tested along with Pyomo.  If test failures
+Contributed packages will be tested along with Pyomo. If test failures
 arise, then these packages will be disabled and an issue will be
-created to resolve these test failures.
+created to resolve these test failures. The Pyomo team reserves the
+right to remove contributed packages that are not maintained.
 
-The following two examples illustrate the two ways
-that ``pyomo.contrib`` can be used to integrate third-party
-contributions.
+When submitting a new package (under either ``addons`` or
+``devel``), please ensure that:
 
-Including External Packages
-+++++++++++++++++++++++++++
+* The package has at least one maintainer responsible for its upkeep.
+* The code includes tests that can be run through Pyomo's
+  continuous integration framework.
+* The package includes documentation that clearly describes its purpose and
+  usage, preferably as online documentation in ``doc/OnlineDocs``.
+* Optional dependencies are properly declared in ``setup.py``
+  under the appropriate ``[optional]`` section.
+* The contribution passes all standard style and formatting checks.
 
-The `pyomocontrib_simplemodel
-<http://pyomocontrib-simplemodel.readthedocs.io/en/latest/>`_ package
-is derived from Pyomo, and it defines the class SimpleModel that
-illustrates how Pyomo can be used in a simple, less object-oriented
-manner. Specifically, this class mimics the modeling style supported
-by `PuLP <https://github.com/coin-or/pulp>`_.
+Example: Structure of a Contributed Package
+-------------------------------------------
 
-While ``pyomocontrib_simplemodel`` can be installed and used separate
-from Pyomo, this package is included in ``pyomo/contrib/simplemodel``.
-This allows this package to be referenced as if were defined as a
-subpackage of ``pyomo.contrib``.  For example::
+This section illustrates a minimal example of how a contributed package
+may be structured within the ``pyomo.devel`` or ``pyomo.addons``
+namespaces. This example is provided for documentation purposes only
+and is not included as source code in the Pyomo repository.
 
-    from pyomo.contrib.simplemodel import *
-    from math import pi
+Minimal Directory Layout
+++++++++++++++++++++++++
 
-    m = SimpleModel()
+At a minimum, a contributed package should follow a structure similar
+to the following::
 
-    r = m.var('r', bounds=(0,None))
-    h = m.var('h', bounds=(0,None))
+   pyomo/devel/example_package/
+   ├── __init__.py
+   ├── core.py
+   └── tests/
+       ├── __init__.py
+       └── test_example_package.py
 
-    m += 2*pi*r*(r + h)
-    m += pi*h*r**2 == 355
+Package Initialization
+++++++++++++++++++++++
 
-    status = m.solve("ipopt")
+The package ``__init__.py`` file should expose the primary public
+interfaces of the package and avoid unnecessary imports. Contributed
+packages must be safe to import as optional components and should not
+introduce side effects at import time.
 
-This example illustrates that a package can be distributed separate
-from Pyomo while appearing to be included in the ``pyomo.contrib``
-subpackage.  Pyomo requires a separate directory be defined under
-``pyomo/contrib`` for each such package, and the Pyomo developer
-team will approve the inclusion of third-party packages in this
-manner.
+For example::
 
+   # pyomo/devel/example_package/__init__.py
+   from pyomo.devel.example_package.core import example_function
 
-Contrib Packages within Pyomo
-+++++++++++++++++++++++++++++
+Core Functionality
+++++++++++++++++++
 
-Third-party contributions can also be included directly within the
-``pyomo.contrib`` package.  The ``pyomo/contrib/example`` package
-provides an example of how this can be done, including a directory
-for plugins and package tests.  For example, this package can be
-imported as a subpackage of ``pyomo.contrib``::
+The main functionality of the contributed package should be implemented
+in one or more modules within the package directory (for example,
+``core.py``). These modules should follow Pyomo's coding standards,
+documentation requirements, and dependency management policies.
 
-    from pyomo.environ import *
-    from pyomo.contrib.example import a
+Tests
++++++
 
-    # Print the value of 'a' defined by this package
-    print(a)
+All contributed packages must include tests. Tests should be placed in a
+``tests`` subpackage and use the Pyomo test harness provided by
+``pyomo.common.unittest``.
 
-Although ``pyomo.contrib.example`` is included in the Pyomo source
-tree, it is treated as an optional package.  Pyomo will attempt to
-import this package, but if an import failure occurs, Pyomo will
-silently ignore it.  Otherwise, this pyomo package will be treated
-like any other.  Specifically:
+At a minimum, tests should verify that the package can be imported and
+that its primary functionality executes as expected. For example::
 
-* Plugin classes defined in this package are loaded when `pyomo.environ` is loaded.
+   import pyomo.common.unittest as unittest
 
-* Tests in this package are run with other Pyomo tests.
+   class TestExamplePackage(unittest.TestCase):
+       def test_import(self):
+           import pyomo.devel.example_package
 
+Tests for contributed packages are run as part of the Pyomo
+test suite and must not have an unconditional import of optional dependencies.
+Tests that exercise functionality requiring optional dependencies must be
+properly guarded (e.g., with ``@unittest.skipIf()`` / ``@unittest.skipUnless()``).
+Pyomo provides a standard tool for supporting the delayed import of optional
+dependencies (see :py:func:`attempt_import()`) as well as a central location for
+importing many common optional dependencies (see :py:mod:`pyomo.common.dependencies`).
+For example, tests that require ``numpy`` may be marked using the Pyomo
+test harness as follows::
+
+   import pyomo.common.unittest as unittest
+   from pyomo.common.dependencies import numpy as np, numpy_available
+
+   @unittest.skipIf(not numpy_available, "NumPy is not available")
+   class TestExampleWithNumpy(unittest.TestCase):
+       def test_numpy_functionality(self):
+           a = np.array([1, 2, 3])
+           self.assertEqual(a.sum(), 6)

@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import os
 import sys
@@ -29,7 +27,7 @@ from pyomo.environ import (
     maximize,
     minimize,
 )
-from pyomo.opt import SolverFactory, ProblemSense, TerminationCondition, SolverStatus
+from pyomo.opt import SolverFactory, TerminationCondition, SolverStatus
 from pyomo.solvers.plugins.solvers.CBCplugin import CBCSHELL
 
 cbc_available = SolverFactory('cbc', solver_io='lp').available(exception_flag=False)
@@ -37,6 +35,8 @@ cbc_available = SolverFactory('cbc', solver_io='lp').available(exception_flag=Fa
 data_dir = '{}/data'.format(dirname(abspath(__file__)))
 
 
+@unittest.skipIf(not cbc_available, "The 'cbc' solver is not available")
+@unittest.pytest.mark.solver("cbc")
 class TestCBC(unittest.TestCase):
     """
     These tests are here to test the general functionality of the cbc solver when using the lp solverio, which will
@@ -53,7 +53,6 @@ class TestCBC(unittest.TestCase):
     def tearDown(self):
         sys.stderr = self.stderr
 
-    @unittest.skipIf(not cbc_available, "The 'cbc' solver is not available")
     def test_infeasible_lp(self):
         self.model.X = Var(within=Reals)
         self.model.C1 = Constraint(expr=self.model.X <= 1)
@@ -62,7 +61,7 @@ class TestCBC(unittest.TestCase):
 
         results = self.opt.solve(self.model)
 
-        self.assertEqual(ProblemSense.minimize, results.problem.sense)
+        self.assertEqual(minimize, results.problem.sense)
         self.assertEqual(
             TerminationCondition.infeasible, results.solver.termination_condition
         )
@@ -71,7 +70,6 @@ class TestCBC(unittest.TestCase):
         )
         self.assertEqual(SolverStatus.warning, results.solver.status)
 
-    @unittest.skipIf(not cbc_available, "The 'cbc' solver is not available")
     def test_unbounded_lp(self):
         self.model.Idx = RangeSet(2)
         self.model.X = Var(self.model.Idx, within=Reals)
@@ -81,7 +79,7 @@ class TestCBC(unittest.TestCase):
 
         results = self.opt.solve(self.model)
 
-        self.assertEqual(ProblemSense.maximize, results.problem.sense)
+        self.assertEqual(maximize, results.problem.sense)
         self.assertEqual(
             TerminationCondition.unbounded, results.solver.termination_condition
         )
@@ -90,7 +88,6 @@ class TestCBC(unittest.TestCase):
         )
         self.assertEqual(SolverStatus.warning, results.solver.status)
 
-    @unittest.skipIf(not cbc_available, "The 'cbc' solver is not available")
     def test_optimal_lp(self):
         self.model.X = Var(within=NonNegativeReals)
         self.model.Obj = Objective(expr=self.model.X, sense=minimize)
@@ -99,7 +96,7 @@ class TestCBC(unittest.TestCase):
 
         self.assertEqual(0.0, results.problem.lower_bound)
         self.assertEqual(0.0, results.problem.upper_bound)
-        self.assertEqual(ProblemSense.minimize, results.problem.sense)
+        self.assertEqual(minimize, results.problem.sense)
         self.assertEqual(
             TerminationCondition.optimal, results.solver.termination_condition
         )
@@ -109,7 +106,6 @@ class TestCBC(unittest.TestCase):
         )
         self.assertEqual(SolverStatus.ok, results.solver.status)
 
-    @unittest.skipIf(not cbc_available, "The 'cbc' solver is not available")
     def test_infeasible_mip(self):
         self.model.X = Var(within=NonNegativeIntegers)
         self.model.C1 = Constraint(expr=self.model.X <= 1)
@@ -118,7 +114,7 @@ class TestCBC(unittest.TestCase):
 
         results = self.opt.solve(self.model)
 
-        self.assertEqual(ProblemSense.minimize, results.problem.sense)
+        self.assertEqual(minimize, results.problem.sense)
         self.assertEqual(
             TerminationCondition.infeasible, results.solver.termination_condition
         )
@@ -127,14 +123,13 @@ class TestCBC(unittest.TestCase):
         )
         self.assertEqual(SolverStatus.warning, results.solver.status)
 
-    @unittest.skipIf(not cbc_available, "The 'cbc' solver is not available")
     def test_unbounded_mip(self):
         self.model.X = Var(within=Integers)
         self.model.Obj = Objective(expr=self.model.X, sense=minimize)
 
         results = self.opt.solve(self.model)
 
-        self.assertEqual(ProblemSense.minimize, results.problem.sense)
+        self.assertEqual(minimize, results.problem.sense)
         self.assertEqual(
             TerminationCondition.unbounded, results.solver.termination_condition
         )
@@ -143,7 +138,6 @@ class TestCBC(unittest.TestCase):
         )
         self.assertEqual(SolverStatus.warning, results.solver.status)
 
-    @unittest.skipIf(not cbc_available, "The 'cbc' solver is not available")
     def test_optimal_mip(self):
         self.model.Idx = RangeSet(2)
         self.model.X = Var(self.model.Idx, within=NonNegativeIntegers)
@@ -159,7 +153,7 @@ class TestCBC(unittest.TestCase):
         self.assertEqual(1.0, results.problem.upper_bound)
         self.assertEqual(results.problem.number_of_binary_variables, 2)
         self.assertEqual(results.problem.number_of_integer_variables, 4)
-        self.assertEqual(ProblemSense.maximize, results.problem.sense)
+        self.assertEqual(maximize, results.problem.sense)
         self.assertEqual(
             TerminationCondition.optimal, results.solver.termination_condition
         )

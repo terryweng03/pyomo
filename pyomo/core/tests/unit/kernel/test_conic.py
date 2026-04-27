@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import pickle
 import math
@@ -35,10 +33,12 @@ from pyomo.core.kernel.conic import (
     primal_power,
     dual_exponential,
     dual_power,
+    primal_geomean,
+    dual_geomean,
 )
 
 
-class _conic_tester_base(object):
+class _conic_tester_base:
     _object_factory = None
 
     def setUp(self):
@@ -700,8 +700,7 @@ class Test_dual_power(_conic_tester_base, unittest.TestCase):
         c.x[0].value = 1.2
         c.x[1].value = -5.3
         val = round(
-            (1.2**2 + (-5.3) ** 2) ** 0.5
-            - ((2.7 / 0.4) ** 0.4) * ((3.7 / 0.6) ** 0.6),
+            (1.2**2 + (-5.3) ** 2) ** 0.5 - ((2.7 / 0.4) ** 0.4) * ((3.7 / 0.6) ** 0.6),
             9,
         )
         self.assertEqual(round(c(), 9), val)
@@ -783,6 +782,40 @@ class Test_dual_power(_conic_tester_base, unittest.TestCase):
         x[1].value = 2
         self.assertEqual(c[3].slack, 0)
         x[1].value = None
+
+
+# These mosek 10 constraints can't be evaluated, pprinted, checked for convexity,
+# pickled, etc., so I won't use the _conic_tester_base for them
+class Test_primal_geomean(unittest.TestCase):
+    def test_as_domain(self):
+        b = primal_geomean.as_domain(r=[2, 3], x=6)
+        self.assertIs(type(b), block)
+        self.assertIs(type(b.q), primal_geomean)
+        self.assertIs(type(b.r), variable_tuple)
+        self.assertIs(type(b.x), variable)
+        self.assertIs(type(b.c), constraint_tuple)
+        self.assertExpressionsEqual(b.c[0].body, b.r[0])
+        self.assertExpressionsEqual(b.c[0].rhs, 2)
+        self.assertExpressionsEqual(b.c[1].body, b.r[1])
+        self.assertExpressionsEqual(b.c[1].rhs, 3)
+        self.assertExpressionsEqual(b.c[2].body, b.x)
+        self.assertExpressionsEqual(b.c[2].rhs, 6)
+
+
+class Test_dual_geomean(unittest.TestCase):
+    def test_as_domain(self):
+        b = dual_geomean.as_domain(r=[2, 3], x=6)
+        self.assertIs(type(b), block)
+        self.assertIs(type(b.q), dual_geomean)
+        self.assertIs(type(b.r), variable_tuple)
+        self.assertIs(type(b.x), variable)
+        self.assertIs(type(b.c), constraint_tuple)
+        self.assertExpressionsEqual(b.c[0].body, b.r[0])
+        self.assertExpressionsEqual(b.c[0].rhs, 2)
+        self.assertExpressionsEqual(b.c[1].body, b.r[1])
+        self.assertExpressionsEqual(b.c[1].rhs, 3)
+        self.assertExpressionsEqual(b.c[2].body, b.x)
+        self.assertExpressionsEqual(b.c[2].rhs, 6)
 
 
 class TestMisc(unittest.TestCase):

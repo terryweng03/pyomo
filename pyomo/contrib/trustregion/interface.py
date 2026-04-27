@@ -1,20 +1,17 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
-#  Development of this module was conducted as part of the Institute for
-#  the Design of Advanced Energy Systems (IDAES) with support through the
-#  Simulation-Based Engineering, Crosscutting Research Program within the
-#  U.S. Department of Energy’s Office of Fossil Energy and Carbon Management.
-#
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
-
+# Development of this module was conducted as part of the Institute for
+# the Design of Advanced Energy Systems (IDAES) with support through the
+# Simulation-Based Engineering, Crosscutting Research Program within the
+# U.S. Department of Energy's Office of Fossil Energy and Carbon Management.
+# ____________________________________________________________________________________
 
 import logging
 
@@ -38,7 +35,6 @@ from pyomo.core.expr.visitor import identify_variables, ExpressionReplacementVis
 from pyomo.core.expr.numeric_expr import ExternalFunctionExpression
 from pyomo.core.expr.numvalue import native_types
 from pyomo.opt import SolverFactory, check_optimal_termination
-
 
 logger = logging.getLogger('pyomo.contrib.trustregion')
 
@@ -95,7 +91,7 @@ class EFReplacement(ExpressionReplacementVisitor):
         return _output
 
 
-class TRFInterface(object):
+class TRFInterface:
     """
     Pyomo interface for Trust Region algorithm.
     """
@@ -290,13 +286,16 @@ class TRFInterface(object):
         return decision_values
 
     def updateDecisionVariableBounds(self, radius):
-        """
-        Update the TRSP_k decision variable bounds
+        """Update the TRSP_k decision variable bounds
 
         This corresponds to:
+
+        .. math::
             || E^{-1} (u - u_k) || <= trust_radius
-        We omit E^{-1} because we assume that the users have correctly scaled
-        their variables.
+
+        We omit :math:`E^{-1}` because we assume that the users have
+        correctly scaled their variables.
+
         """
         for var in self.decision_variables:
             var.setlb(

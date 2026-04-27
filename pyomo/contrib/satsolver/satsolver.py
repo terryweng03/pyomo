@@ -1,3 +1,12 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 import math
 
 from pyomo.common.dependencies import attempt_import
@@ -40,7 +49,7 @@ def satisfiable(model, logger=None):
         raise ValueError('Unknown result: %s' % result)
 
 
-class SMTSatSolver(object):
+class SMTSatSolver:
     """
     Satisfiability solver that checks constraint feasibility through use of
     z3 Sat Solver. Object stores expressions and variables in form consistent

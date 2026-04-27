@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 # -*- coding: utf-8 -*-
 """Transformation to fix and enforce disjunct True/False status."""
@@ -52,7 +50,7 @@ class GDP_Disjunct_Fixer(Transformation):
 
     This reclassifies all disjuncts in the passed model instance as ctype Block
     and deactivates the constraints and disjunctions within inactive disjuncts.
-    In addition, it transforms relvant LogicalConstraints and BooleanVars so
+    In addition, it transforms relevant LogicalConstraints and BooleanVars so
     that the resulting model is a (MI)(N)LP (where it is only mixed-integer
     if the model contains integer-domain Vars or BooleanVars which were not
     indicator_vars of Disjuncs.

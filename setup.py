@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 """
 Script to generate the installer for pyomo.
@@ -16,25 +14,15 @@ Script to generate the installer for pyomo.
 import os
 import platform
 import sys
+from pathlib import Path
 from setuptools import setup, find_packages, Command
 
 try:
+    # This works beginning in setuptools 40.7.0 (27 Jan 2019)
     from setuptools import DistutilsOptionError
 except ImportError:
+    # Needed for setuptools prior to 40.7.0
     from distutils.errors import DistutilsOptionError
-
-
-def read(*rnames):
-    with open(os.path.join(os.path.dirname(__file__), *rnames)) as README:
-        # Strip all leading badges up to, but not including the COIN-OR
-        # badge so that they do not appear in the PyPI description
-        while True:
-            line = README.readline()
-            if 'COIN-OR' in line:
-                break
-            if line.strip() and '[![' not in line:
-                break
-        return line + README.read()
 
 
 def import_pyomo_module(*path):
@@ -51,19 +39,30 @@ def get_version():
     return import_pyomo_module('pyomo', 'version', 'info.py')['__version__']
 
 
+def check_config_arg(name):
+    if name in sys.argv:
+        sys.argv.remove(name)
+        return True
+    if name in os.getenv('PYOMO_SETUP_ARGS', '').split():
+        return True
+    return False
+
+
 CYTHON_REQUIRED = "required"
 if not any(
-    arg.startswith(cmd) for cmd in ('build', 'install', 'bdist') for arg in sys.argv
+    arg.startswith(cmd)
+    for cmd in ('build', 'install', 'bdist', 'wheel')
+    for arg in sys.argv
 ):
     using_cython = False
-else:
+elif sys.version_info[:2] < (3, 11):
     using_cython = "automatic"
-if '--with-cython' in sys.argv:
-    using_cython = CYTHON_REQUIRED
-    sys.argv.remove('--with-cython')
-if '--without-cython' in sys.argv:
+else:
     using_cython = False
-    sys.argv.remove('--without-cython')
+if check_config_arg('--with-cython'):
+    using_cython = CYTHON_REQUIRED
+if check_config_arg('--without-cython'):
+    using_cython = False
 
 ext_modules = []
 if using_cython:
@@ -96,23 +95,14 @@ if using_cython:
         ext_modules = cythonize(files, compiler_directives={"language_level": 3})
     except:
         if using_cython == CYTHON_REQUIRED:
-            print(
-                """
+            print("""
 ERROR: Cython was explicitly requested with --with-cython, but cythonization
        of core Pyomo modules failed.
-"""
-            )
+""")
             raise
         using_cython = False
 
-if ('--with-distributable-extensions' in sys.argv) or (
-    os.getenv('PYOMO_SETUP_ARGS') is not None
-    and '--with-distributable-extensions' in os.getenv('PYOMO_SETUP_ARGS')
-):
-    try:
-        sys.argv.remove('--with-distributable-extensions')
-    except:
-        pass
+if check_config_arg('--with-distributable-extensions'):
     #
     # Import the APPSI extension builder
     # NOTE: There is inconsistent behavior in Windows for APPSI.
@@ -166,7 +156,7 @@ class DependenciesCommand(Command):
         print(' '.join(deps))
 
     def _print_deps(self, deplist):
-        class version_cmp(object):
+        class version_cmp:
             ver = tuple(map(int, platform.python_version_tuple()[:2]))
 
             def __lt__(self, other):
@@ -198,58 +188,25 @@ class DependenciesCommand(Command):
 
 
 setup_kwargs = dict(
-    name='Pyomo',
-    #
-    # Note: the release number is set in pyomo/version/info.py
-    #
     cmdclass={'dependencies': DependenciesCommand},
     version=get_version(),
-    maintainer='Pyomo Developer Team',
-    maintainer_email='pyomo-developers@googlegroups.com',
-    url='http://pyomo.org',
-    project_urls={
-        'Documentation': 'https://pyomo.readthedocs.io/',
-        'Source': 'https://github.com/Pyomo/pyomo',
-    },
-    license='BSD',
-    platforms=["any"],
-    description='Pyomo: Python Optimization Modeling Objects',
-    long_description=read('README.md'),
-    long_description_content_type='text/markdown',
-    keywords=['optimization'],
-    classifiers=[
-        'Development Status :: 5 - Production/Stable',
-        'Intended Audience :: End Users/Desktop',
-        'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: BSD License',
-        'Natural Language :: English',
-        'Operating System :: MacOS',
-        'Operating System :: Microsoft :: Windows',
-        'Operating System :: Unix',
-        'Programming Language :: Python',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
-        'Programming Language :: Python :: 3.11',
-        'Programming Language :: Python :: Implementation :: CPython',
-        'Programming Language :: Python :: Implementation :: PyPy',
-        'Topic :: Scientific/Engineering :: Mathematics',
-        'Topic :: Software Development :: Libraries :: Python Modules',
-    ],
-    python_requires='>=3.8',
-    install_requires=['ply'],
+    install_requires=[],
     extras_require={
+        # There are certain tests that also require pytest-qt, but because those
+        # tests are so environment/machine specific, we are leaving these out of
+        # the dependencies.
         'tests': [
-            #'codecov', # useful for testing infrastructures, but not required
             'coverage',
-            'pytest',
-            'pytest-parallel',
             'parameterized',
             'pybind11',
+            # 9.0.0 breaks skipping individual tests; see
+            # https://github.com/pytest-dev/pytest/issues/13895
+            'pytest!=9.0.0',
+            'pytest-parallel',
         ],
         'docs': [
-            'Sphinx>4',
+            # Sphinx 9.0-9.1.0 fails to correctly generate type references.
+            'Sphinx>4,!=8.2.0,!=9.0.*,!=9.1.0',
             'sphinx-copybutton',
             'sphinx_rtd_theme>0.5',
             'sphinxcontrib-jsmath',
@@ -260,22 +217,29 @@ setup_kwargs = dict(
         'optional': [
             'dill',  # No direct use, but improves lambda pickle
             'ipython',  # contrib.viewer
+            'linear-tree; python_version<"3.14"',  # contrib.piecewise
+            # FIXME: This is a temporary pin that should be removed
+            # when the linear-tree dependency is replaced
+            'scikit-learn<1.7.0; implementation_name!="pypy" and python_version<"3.14"',
+            'scikit-learn; implementation_name!="pypy" and python_version>="3.14"',
             # Note: matplotlib 3.6.1 has bug #24127, which breaks
             # seaborn's histplot (triggering parmest failures)
-            'matplotlib!=3.6.1',
-            # network, incidence_analysis, community_detection
-            # Note: networkx 3.2 is Python>-3.9, but there is a broken
-            # 3.2 package on conda-forgethat will get implicitly
-            # installed on python 3.8
-            'networkx<3.2; python_version<"3.9"',
-            'networkx; python_version>="3.9"',
+            # Note: minimum version from community_detection use of
+            # matplotlib.pyplot.get_cmap()
+            'matplotlib>=3.6.0,!=3.6.1',
+            'networkx',  # network, incidence_analysis, community_detection
             'numpy',
             'openpyxl',  # dataportals
+            'packaging',  # for checking other dependency versions
             #'pathos',   # requested for #963, but PR currently closed
-            'pint',  # units
+            # pint causes a segfault only for one test (test_bad_units) on pypy
+            'pint; implementation_name!="pypy"',  # units
             'plotly',  # incidence_analysis
             'python-louvain',  # community_detection
             'pyyaml',  # core
+            # qtconsole also requires a supported Qt version (PyQt5 or PySide6).
+            # Because those are environment specific, we have left that out here.
+            'qtconsole',  # contrib.viewer
             'scipy',
             'sympy',  # differentiation
             'xlrd',  # dataportals
@@ -288,9 +252,7 @@ setup_kwargs = dict(
             # The following optional dependencies are difficult to
             # install on PyPy (binary wheels are not available), so we
             # will only "require" them on other (CPython) platforms:
-            #
-            # DAE can use casadi
-            'casadi; implementation_name!="pypy"',
+            'casadi; implementation_name!="pypy"',  # dae
             'numdifftools; implementation_name!="pypy"',  # pynumero
             'pandas; implementation_name!="pypy"',
             'seaborn; implementation_name!="pypy"',  # parmest.graphics
@@ -300,23 +262,30 @@ setup_kwargs = dict(
     package_data={
         "pyomo.contrib.ampl_function_demo": ["src/*"],
         "pyomo.contrib.appsi.cmodel": ["src/*"],
+        "pyomo.contrib.cspline_external": ["src/*"],
+        "pyomo.contrib.aslfunctions": ["src/*"],
         "pyomo.contrib.mcpp": ["*.cpp"],
         "pyomo.contrib.pynumero": ['src/*', 'src/tests/*'],
         "pyomo.contrib.viewer": ["*.ui"],
+        "pyomo.contrib.simplification.ginac": ["src/*.cpp", "src/*.hpp"],
     },
     ext_modules=ext_modules,
-    entry_points="""
-    [console_scripts]
-    pyomo = pyomo.scripting.pyomo_main:main_console_script
-
-    [pyomo.command]
-    pyomo.help = pyomo.scripting.driver_help
-    pyomo.viewer=pyomo.contrib.viewer.pyomo_viewer
-    """,
 )
 
 
 try:
+    # setuptools.build_meta (>=68) forbids absolute paths in the `sources=` list.
+    # This resets the extensions (only for those items that are absolute paths)
+    # to use relative paths
+    ROOT = Path(__file__).parent.resolve()
+    for ext in ext_modules:
+        rel_sources = []
+        for src in ext.sources:
+            p = Path(src)
+            if p.is_absolute():
+                p = p.relative_to(ROOT)
+            rel_sources.append(p.as_posix())
+        ext.sources[:] = rel_sources
     setup(**setup_kwargs)
 except SystemExit as e_info:
     # Cython can generate a SystemExit exception on Windows if the
@@ -326,31 +295,23 @@ except SystemExit as e_info:
     if 'Microsoft Visual C++' not in str(e_info):
         raise
     elif using_cython == CYTHON_REQUIRED:
-        print(
-            """
+        print("""
 ERROR: Cython was explicitly requested with --with-cython, but cythonization
        of core Pyomo modules failed.
-"""
-        )
+""")
         raise
     else:
-        print(
-            """
+        print("""
 ERROR: setup() failed:
     %s
 Re-running setup() without the Cython modules
-"""
-            % (str(e_info),)
-        )
+""" % (str(e_info),))
         setup_kwargs['ext_modules'] = []
         setup(**setup_kwargs)
-        print(
-            """
+        print("""
 WARNING: Installation completed successfully, but the attempt to cythonize
          core Pyomo modules failed.  Cython provides performance
          optimizations and is not required for any Pyomo functionality.
          Cython returned the following error:
    "%s"
-"""
-            % (str(e_info),)
-        )
+""" % (str(e_info),))

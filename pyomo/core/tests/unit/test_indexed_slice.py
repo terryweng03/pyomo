@@ -1,13 +1,11 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 #
 # Unit Tests for indexed components
 #
@@ -17,7 +15,7 @@ import pickle
 import pyomo.common.unittest as unittest
 
 from pyomo.environ import Var, Block, ConcreteModel, RangeSet, Set, Any
-from pyomo.core.base.block import _BlockData
+from pyomo.core.base.block import BlockData
 from pyomo.core.base.indexed_component_slice import IndexedComponent_slice
 from pyomo.core.base.set import normalize_index
 
@@ -64,7 +62,7 @@ class TestComponentSlices(unittest.TestCase):
         self.m = None
 
     def test_simple_getitem(self):
-        self.assertIsInstance(self.m.b[1, 4], _BlockData)
+        self.assertIsInstance(self.m.b[1, 4], BlockData)
 
     def test_simple_getslice(self):
         _slicer = self.m.b[:, 4]

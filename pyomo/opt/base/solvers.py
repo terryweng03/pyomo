@@ -1,29 +1,26 @@
-#  ___________________________________________________________________________
+# ____________________________________________________________________________________
 #
-#  Pyomo: Python Optimization Modeling Objects
-#  Copyright (c) 2008-2022
-#  National Technology and Engineering Solutions of Sandia, LLC
-#  Under the terms of Contract DE-NA0003525 with National Technology and
-#  Engineering Solutions of Sandia, LLC, the U.S. Government retains certain
-#  rights in this software.
-#  This software is distributed under the 3-clause BSD License.
-#  ___________________________________________________________________________
-
-__all__ = ('OptSolver', 'SolverFactory', 'UnknownSolver', 'check_available_solvers')
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
 
 import re
 import sys
 import time
 import logging
 import shlex
+from typing import overload
 
 from pyomo.common import Factory
-from pyomo.common.config import ConfigDict
+from pyomo.common.enums import SolverAPIVersion
 from pyomo.common.errors import ApplicationError
 from pyomo.common.collections import Bunch
 
 from pyomo.opt.base.convert import convert_problem
-from pyomo.opt.base.formats import ResultsFormat, ProblemFormat
+from pyomo.opt.base.formats import ResultsFormat
 import pyomo.opt.base.results
 
 logger = logging.getLogger('pyomo.opt')
@@ -57,7 +54,7 @@ def _extract_version(x, length=4):
     return None  # (0,0,0,0)[:length]
 
 
-class UnknownSolver(object):
+class UnknownSolver:
     def __init__(self, *args, **kwds):
         # super(UnknownSolver,self).__init__(**kwds)
 
@@ -82,6 +79,18 @@ class UnknownSolver(object):
 
     def __exit__(self, t, v, traceback):
         pass
+
+    @classmethod
+    def api_version(self):
+        """
+        Return the public API supported by this interface.
+
+        Returns
+        -------
+        ~pyomo.common.enums.SolverAPIVersion
+            A solver API enum object
+        """
+        return SolverAPIVersion.V1
 
     def available(self, exception_flag=True):
         """Determine if this optimizer is available."""
@@ -125,8 +134,7 @@ where the UnknownSolver object was used as if it were valid (by calling
 method "%s").
 
 The original solver was created with the following parameters:
-\t"""
-            % (self.type, method_name)
+\t""" % (self.type, method_name)
             + "\n\t".join("%s: %s" % i for i in sorted(self._kwds.items()))
             + "\n\t_args: %s" % (self._args,)
             + "\n\toptions: %s" % (self.options,)
@@ -134,6 +142,11 @@ The original solver was created with the following parameters:
 
 
 class SolverFactoryClass(Factory):
+    @overload
+    def __call__(self, _name: None = None, **kwds) -> "SolverFactoryClass": ...
+    @overload
+    def __call__(self, _name, **kwds) -> "OptSolver": ...
+
     def __call__(self, _name=None, **kwds):
         if _name is None:
             return self
@@ -181,7 +194,12 @@ class SolverFactoryClass(Factory):
         return opt
 
 
+#: Global registry/factory for "v1" solver interfaces.
+LegacySolverFactory: SolverFactoryClass = SolverFactoryClass('solver type')
+
 SolverFactory = SolverFactoryClass('solver type')
+SolverFactory._cls = LegacySolverFactory._cls
+SolverFactory._doc = LegacySolverFactory._doc
 
 
 #
@@ -235,7 +253,7 @@ def _raise_ephemeral_error(name, keyword=""):
     )
 
 
-class OptSolver(object):
+class OptSolver:
     """A generic optimization solver"""
 
     #
@@ -247,6 +265,18 @@ class OptSolver(object):
 
     def __exit__(self, t, v, traceback):
         pass
+
+    @classmethod
+    def api_version(self):
+        """
+        Return the public API supported by this interface.
+
+        Returns
+        -------
+        ~pyomo.common.enums.SolverAPIVersion
+            A solver API enum object
+        """
+        return SolverAPIVersion.V1
 
     #
     # Adding to help track down invalid code after making
@@ -469,8 +499,8 @@ class OptSolver(object):
         Set the current results format (if it's valid for the current
         problem format).
         """
-        if (self._problem_format in self._valid_results_formats) and (
-            format in self._valid_results_formats[self._problem_format]
+        if (self._problem_format in self._valid_result_formats) and (
+            format in self._valid_result_formats[self._problem_format]
         ):
             self._results_format = format
         else:
@@ -535,15 +565,15 @@ class OptSolver(object):
         # If the inputs are models, then validate that they have been
         # constructed! Collect suffix names to try and import from solution.
         #
-        from pyomo.core.base.block import _BlockData
+        from pyomo.core.base.block import BlockData
         import pyomo.core.base.suffix
         from pyomo.core.kernel.block import IBlock
         import pyomo.core.kernel.suffix
 
         _model = None
         for arg in args:
-            if isinstance(arg, (_BlockData, IBlock)):
-                if isinstance(arg, _BlockData):
+            if isinstance(arg, (BlockData, IBlock)):
+                if isinstance(arg, BlockData):
                     if not arg.is_constructed():
                         raise RuntimeError(
                             "Attempting to solve model=%s with unconstructed "
@@ -552,7 +582,7 @@ class OptSolver(object):
 
                 _model = arg
                 # import suffixes must be on the top-level model
-                if isinstance(arg, _BlockData):
+                if isinstance(arg, BlockData):
                     model_suffixes = list(
                         name
                         for (
@@ -641,9 +671,9 @@ class OptSolver(object):
                         result.solution(0).symbol_map = getattr(
                             _model, "._symbol_maps"
                         )[result._smap_id]
-                        result.solution(
-                            0
-                        ).default_variable_value = self._default_variable_value
+                        result.solution(0).default_variable_value = (
+                            self._default_variable_value
+                        )
                         if self._load_solutions:
                             _model.load_solution(result.solution(0))
                     else:
@@ -699,12 +729,10 @@ class OptSolver(object):
 
         if self._problem_format:
             write_start_time = time.time()
-            (
-                self._problem_files,
-                self._problem_format,
-                self._smap_id,
-            ) = self._convert_problem(
-                args, self._problem_format, self._valid_problem_formats, **kwds
+            self._problem_files, self._problem_format, self._smap_id = (
+                self._convert_problem(
+                    args, self._problem_format, self._valid_problem_formats, **kwds
+                )
             )
             total_time = time.time() - write_start_time
             if self._report_timing:

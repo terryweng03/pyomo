@@ -490,6 +490,7 @@ class TestGurobiPersistent(unittest.TestCase):
         # This means that there is no guarantee we are testing
         # what we are trying to test. Unfortunately, I'm
         # not sure of a good way to guarantee that
+
         if num_solutions == 0:
             self.assertIsNone(res.best_feasible_objective)
 

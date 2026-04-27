@@ -9,7 +9,7 @@
 
 from pyomo.common.extensions import ExtensionBuilderFactory
 from .base import SolverFactory
-from .solvers import Gurobi, Ipopt, Cbc, Cplex, Highs, MAiNGO
+from .solvers import Gurobi, Ipopt, Cbc, Cplex, Highs, MAiNGO, Copt
 from .build import AppsiBuilder
 
 
@@ -31,3 +31,6 @@ def load():
     SolverFactory.register(
         name='maingo', doc='Automated persistent interface to MAiNGO'
     )(MAiNGO)
+    SolverFactory.register(
+        name='copt', doc='Automated persistent interface to Copt'
+    )(Copt)

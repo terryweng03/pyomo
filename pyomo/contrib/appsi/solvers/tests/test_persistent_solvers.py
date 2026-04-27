@@ -15,7 +15,7 @@ parameterized, param_available = attempt_import('parameterized')
 parameterized = parameterized.parameterized
 from pyomo.contrib.appsi.base import TerminationCondition, Results, PersistentSolver
 from pyomo.contrib.appsi.cmodel import cmodel_available
-from pyomo.contrib.appsi.solvers import Gurobi, Ipopt, Cplex, Cbc, Highs, MAiNGO
+from pyomo.contrib.appsi.solvers import Gurobi, Ipopt, Cplex, Cbc, Highs, MAiNGO, Copt
 from typing import Type
 from pyomo.core.expr.numeric_expr import LinearExpression
 import os
@@ -34,6 +34,7 @@ all_solvers = [
     ('cbc', Cbc),
     ('highs', Highs),
     ('maingo', MAiNGO),
+    ('copt', Copt),
 ]
 mip_solvers = [
     ('gurobi', Gurobi),
@@ -41,6 +42,7 @@ mip_solvers = [
     ('cbc', Cbc),
     ('highs', Highs),
     ('maingo', MAiNGO),
+    ('copt', Copt),
 ]
 nlp_solvers = [('ipopt', Ipopt), ('maingo', MAiNGO)]
 qcp_solvers = [
@@ -48,8 +50,9 @@ qcp_solvers = [
     ('ipopt', Ipopt),
     ('cplex', Cplex),
     ('maingo', MAiNGO),
+    ('copt', Copt),
 ]
-miqcqp_solvers = [('gurobi', Gurobi), ('cplex', Cplex), ('maingo', MAiNGO)]
+miqcqp_solvers = [('gurobi', Gurobi), ('cplex', Cplex), ('maingo', MAiNGO), ('copt', Copt)]
 only_child_vars_options = [True, False]
 
 
@@ -489,9 +492,10 @@ class TestSolvers(unittest.TestCase):
         opt.config.load_solution = False
         res = opt.solve(m)
         self.assertNotEqual(res.termination_condition, TerminationCondition.optimal)
-        if opt_class is Ipopt:
+        if opt_class in {Ipopt, Copt}:
             acceptable_termination_conditions = {
                 TerminationCondition.infeasible,
+                TerminationCondition.infeasibleOrUnbounded,
                 TerminationCondition.unbounded,
             }
         else:

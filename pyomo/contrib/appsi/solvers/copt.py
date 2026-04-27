@@ -1,3 +1,12 @@
+# ____________________________________________________________________________________
+#
+# Pyomo: Python Optimization Modeling Objects
+# Copyright (c) 2008-2026 National Technology and Engineering Solutions of Sandia, LLC
+# Under the terms of Contract DE-NA0003525 with National Technology and Engineering
+# Solutions of Sandia, LLC, the U.S. Government retains certain rights in this
+# software.  This software is distributed under the 3-clause BSD License.
+# ____________________________________________________________________________________
+
 import logging
 import math
 from typing import List, Dict, Optional
@@ -787,7 +796,7 @@ class Copt(PersistentBase, PersistentSolver):
             new_con = self._solver_model.addQConstr(
                 new_copt_expr, new_sense, new_rhs, name=name
             )
-            self._pyomo_con_to_solver_con_map[id(pyomo_con)] = new_con
+            self._pyomo_con_to_solver_con_map[pyomo_con] = new_con
             del self._solver_con_to_pyomo_con_map[id(copt_con)]
             self._solver_con_to_pyomo_con_map[id(new_con)] = pyomo_con
             helper.con = new_con
@@ -872,19 +881,22 @@ class Copt(PersistentBase, PersistentSolver):
         results.best_feasible_objective = None
         results.best_objective_bound = None
         if self._objective is not None:
-            if self._solver_model.ismip and self._solver_model.hasmipsol:
-                results.best_feasible_objective = self._solver_model.objval
-                results.best_objective_bound = self._solver_model.bestbnd
-            elif (
-                self._solver_model.ismip == 0
-                and results.termination_condition == TerminationCondition.optimal
-            ):
-                results.best_feasible_objective = self._solver_model.lpobjval
-                results.best_objective_bound = self._solver_model.lpobjval
+            results.best_feasible_objective = self._solver_model.objval
+            results.best_objective_bound = self._solver_model.objbound
+
+            if self.get_model_attr('hassol') == 0:
+                results.best_feasible_objective = None
+
             if results.best_feasible_objective is not None and not math.isfinite(
                 results.best_feasible_objective
             ):
                 results.best_feasible_objective = None
+
+            if results.best_objective_bound is None:
+                if self._objective.sense == minimize:
+                    results.best_objective_bound = -math.inf
+                else:
+                    results.best_objective_bound = math.inf
 
         timer.start('load solution')
         if config.load_solution:
@@ -986,15 +998,10 @@ class Copt(PersistentBase, PersistentSolver):
         return res
 
     def get_duals(self, cons_to_load=None):
-        if self._solver_model.Status != coptpy.COPT.OPTIMAL:
+        if self._solver_model.status != coptpy.COPT.OPTIMAL:
             raise RuntimeError(
                 'Solver does not currently have valid duals. Please '
                 'check the termination condition.'
-            )
-        # TODO: Cannot get duals for quadratic constraints so far with COPT
-        if self._solver_model.qconstrs > 0:
-            raise RuntimeError(
-                "Dual solution for quadratic constraints is not available in COPT"
             )
 
         con_map = self._pyomo_con_to_solver_con_map
@@ -1004,7 +1011,15 @@ class Copt(PersistentBase, PersistentSolver):
         if cons_to_load is None:
             cons_to_load = con_map.keys()
 
-        copt_cons_to_load = [con_map[pyomo_con_id] for pyomo_con_id in cons_to_load]
+        copt_cons_to_load = list()
+        for pyomo_con in cons_to_load:
+            copt_con = con_map[pyomo_con]
+            if isinstance(copt_con, coptpy.QConstraint):
+                raise RuntimeError(
+                    "Dual solution for quadratic constraints is not available in COPT"
+                )
+            copt_cons_to_load.append(copt_con)
+
         vals = list()
         for copt_con in copt_cons_to_load:
             vals.append(copt_con.dual)

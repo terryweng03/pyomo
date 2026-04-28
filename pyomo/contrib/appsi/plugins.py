@@ -31,6 +31,6 @@ def load():
     SolverFactory.register(
         name='maingo', doc='Automated persistent interface to MAiNGO'
     )(MAiNGO)
-    SolverFactory.register(
-        name='copt', doc='Automated persistent interface to Copt'
-    )(Copt)
+    SolverFactory.register(name='copt', doc='Automated persistent interface to Copt')(
+        Copt
+    )

@@ -52,7 +52,12 @@ qcp_solvers = [
     ('maingo', MAiNGO),
     ('copt', Copt),
 ]
-miqcqp_solvers = [('gurobi', Gurobi), ('cplex', Cplex), ('maingo', MAiNGO), ('copt', Copt)]
+miqcqp_solvers = [
+    ('gurobi', Gurobi),
+    ('cplex', Cplex),
+    ('maingo', MAiNGO),
+    ('copt', Copt),
+]
 only_child_vars_options = [True, False]
 
 

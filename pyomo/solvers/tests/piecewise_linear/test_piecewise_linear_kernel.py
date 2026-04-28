@@ -28,6 +28,7 @@ testing_solvers['gurobi', 'nl'] = False
 # testing_solvers['ipopt','nl'] = False
 # testing_solvers['cplex','python'] = False
 # testing_solvers['_cplex_persistent','python'] = False
+testing_solvers['copt_direct', 'python'] = False
 for _solver, _io in _test_solver_cases():
     if (_solver, _io) in testing_solvers and _test_solver_cases(_solver, _io).available:
         testing_solvers[_solver, _io] = True

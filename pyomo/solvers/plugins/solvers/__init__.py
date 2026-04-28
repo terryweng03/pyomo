@@ -25,6 +25,8 @@ from pyomo.solvers.plugins.solvers import (
     cplex_direct,
     cplex_persistent,
     cuopt_direct,
+    copt_direct,
+    copt_persistent,
     GAMS,
     mosek_direct,
     mosek_persistent,

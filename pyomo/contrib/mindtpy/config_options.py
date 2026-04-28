@@ -554,9 +554,11 @@ def _add_subsolver_configs(CONFIG):
                     'gams',
                     'gurobi_persistent',
                     'cplex_persistent',
+                    'copt_persistent',
                     'appsi_cplex',
                     'appsi_gurobi',
                     'appsi_highs',
+                    'appsi_copt',
                 ]
             ),
             description='MIP subsolver name',
@@ -636,9 +638,11 @@ def _add_subsolver_configs(CONFIG):
                     'gams',
                     'gurobi_persistent',
                     'cplex_persistent',
+                    'copt_persistent',
                     'appsi_cplex',
                     'appsi_gurobi',
                     'appsi_highs',
+                    'appsi_copt',
                 ]
             ),
             description='MIP subsolver for regularization problem',

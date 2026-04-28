@@ -30,6 +30,9 @@ xpress_direct = SolverFactory('xpress_direct')
 xpress_persistent = SolverFactory('xpress_persistent')
 xpress_appsi = SolverFactory('appsi_xpress')
 
+copt_direct = SolverFactory('copt_direct')
+copt_persistent = SolverFactory('copt_persistent')
+
 
 class TestQuadraticModels(unittest.TestCase):
     def _qp_model(self):
@@ -191,4 +194,22 @@ class TestQuadraticModels(unittest.TestCase):
         m = self._qp_model()
         xpress_appsi.set_instance(m)
         results = xpress_appsi.solve(m)
+        self.assertEqual(m.obj(), results['Problem'][0]['Upper bound'])
+
+    @unittest.skipUnless(
+        copt_direct.available(exception_flag=False), "needs COPT Direct interface"
+    )
+    def test_qp_objective_copt_direct(self):
+        m = self._qp_model()
+        results = copt_direct.solve(m)
+        self.assertEqual(m.obj(), results['Problem'][0]['Upper bound'])
+
+    @unittest.skipUnless(
+        copt_persistent.available(exception_flag=False),
+        "needs COPT Persistent interface",
+    )
+    def test_qp_objective_copt_persistent(self):
+        m = self._qp_model()
+        copt_persistent.set_instance(m)
+        results = copt_persistent.solve(m)
         self.assertEqual(m.obj(), results['Problem'][0]['Upper bound'])
